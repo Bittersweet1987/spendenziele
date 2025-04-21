@@ -711,11 +711,17 @@ if (isset($_POST['apply_updates']) && $currentStep === 1) {
     
     if (empty($updateResults['errors'])) {
         $status = "Update erfolgreich durchgeführt";
-        $_SESSION['update_results'] = $updateResults; // Speichere Ergebnisse in der Session
+        $_SESSION['update_results'] = $updateResults;
         $_SESSION['step1_completed'] = true;
     } else {
         $error = "Fehler beim Update: " . implode(", ", $updateResults['errors']);
     }
+}
+
+if ($currentStep === 2) {
+    // Bereinige alte Ergebnisse beim Start von Schritt 2
+    unset($_SESSION['file_update_results']);
+    unset($fileUpdateResults);
 }
 
 if (isset($_POST['update_files']) && $currentStep === 2) {
@@ -723,11 +729,17 @@ if (isset($_POST['update_files']) && $currentStep === 2) {
     
     if (empty($fileUpdateResults['errors'])) {
         $status = "Datei-Update erfolgreich durchgeführt";
-        $_SESSION['file_update_results'] = $fileUpdateResults; // Speichere Ergebnisse in der Session
+        $_SESSION['file_update_results'] = $fileUpdateResults;
         $_SESSION['step2_completed'] = true;
     } else {
         $error = "Fehler beim Datei-Update: " . implode(", ", $fileUpdateResults['errors']);
     }
+}
+
+// Aktualisiere die Commit-Informationen NUR in Schritt 3
+if ($currentStep === 3 && isset($latestCommit['hash'])) {
+    file_put_contents(__DIR__ . '/last_commit.txt', $latestCommit['hash']);
+    $_SESSION['current_commit'] = $latestCommit['hash'];
 }
 
 // Lade gespeicherte Ergebnisse aus der Session
@@ -1295,6 +1307,13 @@ if ($currentStep > 2 && !isset($_SESSION['step2_completed'])) {
             <?php endif; ?>
 
         <?php elseif ($currentStep === 3): ?>
+            <?php
+            // Aktualisiere die Commit-Informationen immer in Schritt 3
+            if (isset($latestCommit['hash'])) {
+                file_put_contents(__DIR__ . '/last_commit.txt', $latestCommit['hash']);
+                $_SESSION['current_commit'] = $latestCommit['hash'];
+            }
+            ?>
             <h2>Übersicht</h2>
             
             <?php if (isset($updateResults) || isset($fileUpdateResults)): ?>
@@ -1353,6 +1372,23 @@ if ($currentStep > 2 && !isset($_SESSION['step2_completed'])) {
                 <input type="hidden" name="update_commit" value="<?php echo htmlspecialchars($latestCommit['hash']); ?>">
                 <button type="submit" class="btn btn-primary">Zurück zum Adminmenü</button>
             </form>
+            
+            <?php
+            // Speichere die Login-Informationen temporär
+            $admin_id = $_SESSION['admin_id'] ?? null;
+            
+            // Bereinige die Session nach erfolgreichem Update
+            unset($_SESSION['update_results']);
+            unset($_SESSION['file_update_results']);
+            unset($_SESSION['step1_completed']);
+            unset($_SESSION['step2_completed']);
+            unset($_SESSION['current_step']);
+            
+            // Stelle die Login-Informationen wieder her
+            if ($admin_id !== null) {
+                $_SESSION['admin_id'] = $admin_id;
+            }
+            ?>
         <?php endif; ?>
     </div>
 </body>
