@@ -7,6 +7,7 @@ composer.lock
 config.php
 create_admin.php
 *.config.php
+last_commit.txt
 
 # Temporäre Dateien
 *.log
@@ -29,4 +30,4 @@ Thumbs.db
 # Lokale Entwicklungsumgebung
 /local-*
 .env.local
-*.local.php
+*.local.php 
