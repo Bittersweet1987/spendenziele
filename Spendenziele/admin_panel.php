@@ -11,8 +11,12 @@ require_once __DIR__ . '/config.php';
 
 // Funktion zum Prüfen auf Updates
 function checkForUpdates() {
+    // Lese den letzten bekannten Commit-Hash
+    $lastKnownCommitFile = __DIR__ . '/last_commit.txt';
+    $lastKnownCommit = trim(@file_get_contents($lastKnownCommitFile) ?: '');
+    
     // GitHub API URL für das Repository
-    $githubApiUrl = 'https://api.github.com/repos/Bittersweet-Chocolate/spendenziele/commits';
+    $githubApiUrl = 'https://api.github.com/repos/Bittersweet1987/spendenziele/commits/main';
     
     $opts = [
         'http' => [
@@ -28,29 +32,32 @@ function checkForUpdates() {
     $response = @file_get_contents($githubApiUrl, false, $context);
     
     if ($response === false) {
-        return false;
+        return true; // Bei Fehlern Button anzeigen
     }
     
-    $commits = json_decode($response, true);
-    if (!is_array($commits) || empty($commits)) {
-        return false;
+    $data = json_decode($response, true);
+    if (!is_array($data) || !isset($data['sha'])) {
+        return true; // Bei Fehlern Button anzeigen
     }
 
-    // Lese den letzten bekannten Commit-Hash
-    $lastKnownCommitFile = __DIR__ . '/last_commit.txt';
-    $lastKnownCommit = @file_get_contents($lastKnownCommitFile) ?: '';
-    
     // Aktuellster Commit von GitHub
-    $latestCommit = $commits[0]['sha'];
+    $latestCommit = trim($data['sha']);
     
-    // Wenn kein letzter Commit gespeichert ist, speichere den aktuellen und zeige kein Update an
+    // Wenn kein letzter Commit gespeichert ist, aktuellen speichern
     if (empty($lastKnownCommit)) {
         file_put_contents($lastKnownCommitFile, $latestCommit);
         return false;
     }
     
-    // Vergleiche die Commits
-    return $lastKnownCommit !== $latestCommit;
+    // Debug-Ausgabe (temporär)
+    error_log("Local commit: " . $lastKnownCommit);
+    error_log("Remote commit: " . $latestCommit);
+    
+    // Vergleiche die Commits (ersten 7 Zeichen)
+    $localShort = substr($lastKnownCommit, 0, 7);
+    $remoteShort = substr($latestCommit, 0, 7);
+    
+    return $localShort !== $remoteShort;
 }
 
 // Prüfe auf Updates
