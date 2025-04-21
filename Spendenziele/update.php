@@ -1309,32 +1309,33 @@ if ($currentStep > 2 && !isset($_SESSION['step2_completed'])) {
 
         <?php elseif ($currentStep === 3): ?>
             <?php
-            // Aktualisiere die Commit-Informationen sofort bei Aufruf von Schritt 3
+            // Aktualisiere die Commit-Informationen sofort
             if (isset($latestCommit['hash'])) {
+                // Schreibe die neue Version in die Datei
                 file_put_contents(__DIR__ . '/last_commit.txt', $latestCommit['hash']);
+                
+                // Aktualisiere die Session-Variablen
                 $_SESSION['current_commit'] = $latestCommit['hash'];
                 $_SESSION['update_timestamp'] = time();
+                
+                // Aktualisiere die aktuelle Version für die Anzeige
+                $currentCommit['hash'] = $latestCommit['hash'];
+                $currentCommit['date'] = $latestCommit['date'];
             }
             ?>
-            <script>
-            // Funktion zum Prüfen des Update-Status
-            function checkUpdateStatus() {
-                fetch('check_version.php?type=update')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.status === 'updated') {
-                            // Wenn das Update abgeschlossen ist, Seite neu laden
-                            window.location.reload();
-                        }
-                    })
-                    .catch(error => console.error('Fehler beim Prüfen des Update-Status:', error));
-            }
-
-            // Prüfe alle 10 Sekunden den Status
-            setInterval(checkUpdateStatus, 10000);
-            </script>
 
             <h2>Übersicht</h2>
+            
+            <div class="version-info">
+                <h3>Update erfolgreich abgeschlossen</h3>
+                <p>
+                    Aktuelle Version: <code><?php echo htmlspecialchars($currentCommit['hash']); ?></code>
+                    <?php if ($currentCommit['date']): ?>
+                        <span class="commit-date">(Erstellt am: <?php echo $currentCommit['date']->format('d.m.Y H:i'); ?> Uhr)</span>
+                    <?php endif; ?>
+                    <span class="version-status status-current">Aktuell</span>
+                </p>
+            </div>
             
             <?php if (isset($updateResults) || isset($fileUpdateResults)): ?>
                 <div class="update-summary">
