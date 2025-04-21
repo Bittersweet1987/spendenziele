@@ -16,15 +16,36 @@ Ein System zur Verwaltung von Spendenzielen für Streamer, mit Streamer.Bot-Inte
 
 ## 🚀 Installation
 
-1. Laden Sie die neueste Version des Systems von GitHub herunter
-2. Öffnen Sie die Installationsseite in Ihrem Browser:
-   ```
-   https://ihre-domain.de/pfad/zu/install.php
-   ```
+### 🌐 Webhosting
+Einen kostenlosen Webspace mit PHP und MySQL-Datenbank finden Sie hier:
+[FreeHostingNoAds.net](https://freehostingnoads.net/)
+
+Features:
+- 1GB Webspace
+- PHP 5.x bis 7.4.2
+- MySQL 5.7
+- Keine Zwangswerbung
+- Kostenlose E-Mail-Adressen
+- 99.9% Uptime
+
+### 📥 Installation
+
+1. Vorbereitung:
+   - Erstellen Sie eine neue MySQL-Datenbank in Ihrem Webspace
+   - Notieren Sie sich die Zugangsdaten (Datenbankname, Benutzername, Passwort)
+
+2. Installation:
+   - Laden Sie nur die Datei `install.php` auf Ihren Webspace hoch
+   - Öffnen Sie die Installationsseite in Ihrem Browser:
+     ```
+     https://ihre-domain.de/pfad/zu/install.php
+     ```
+
 3. Folgen Sie dem Installationsassistenten:
    - Geben Sie Ihre Datenbankverbindungsdaten ein
    - Erstellen Sie Ihren Admin-Account
-   - Die Installation richtet automatisch alle benötigten Tabellen ein
+   - Die Installation lädt automatisch alle benötigten Dateien herunter
+   - Die Datenbanktabellen werden automatisch eingerichtet
    - Nach erfolgreicher Installation werden Sie zum Admin-Panel weitergeleitet
    - Die install.php wird automatisch gelöscht
 
