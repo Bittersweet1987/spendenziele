@@ -1,0 +1,32 @@
+# PHP
+vendor/
+composer.lock
+.env
+
+# Konfigurationsdateien
+config.php
+create_admin.php
+*.config.php
+
+# Temporäre Dateien
+*.log
+*.cache
+*.tmp
+temp/
+cache/
+
+# IDE & System
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Sicherheitskopien
+*.bak
+*.swp
+*~
+
+# Lokale Entwicklungsumgebung
+/local-*
+.env.local
+*.local.php

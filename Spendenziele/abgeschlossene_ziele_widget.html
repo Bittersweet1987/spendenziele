@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Erreichte Ziele Widget</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .widget-container {
+            background: rgba(0, 0, 0, 0.6);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+            display: inline-block;
+            width: 500px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .title {
+            font-size: 22px;
+            color: #fff;
+            font-weight: 700;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 3;
+        }
+
+        .city-container {
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #fff;
+            font-size: 18px;
+            font-weight: bold;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin: 5px 0;
+            background: rgba(40, 167, 69, 0.2);
+            transition: transform 0.3s ease;
+            overflow: hidden;
+            width: calc(100% - 30px);
+            height: auto;
+        }
+
+        .progress-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            background: rgba(40, 167, 69, 0.3);
+            transition: width 0.5s ease-in-out;
+            z-index: 1;
+        }
+
+        .city-container:hover {
+            transform: translateY(-2px);
+            background: rgba(40, 167, 69, 0.3);
+        }
+
+        .mindestbetrag {
+            font-size: 14px;
+            font-weight: normal;
+            color: #ffcc00;
+            margin-left: 10px;
+        }
+
+        .ziel-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 2;
+            position: relative;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .betrag {
+            color: #fff;
+            font-weight: bold;
+            z-index: 2;
+            position: relative;
+            white-space: nowrap;
+            margin-left: 10px;
+            flex-shrink: 0;
+        }
+
+        .prozent {
+            color: #ffcc00;
+            margin-left: 8px;
+            font-size: 14px;
+        }
+
+        #erreichte-ziele {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            height: 250px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .pagination-info {
+            position: absolute;
+            top: 24px;
+            right: 20px;
+            color: #ffcc00;
+            font-size: 14px;
+            font-weight: bold;
+            opacity: 0;
+            animation: fadeIn 0.5s ease-out forwards;
+            z-index: 3;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+
+        .fade-out {
+            animation: fadeOut 0.5s ease-out forwards;
+        }
+
+        .loading {
+            opacity: 0;
+        }
+    </style>
+    <script>
+        let previousData = null;
+        let currentPage = 0;
+        let autoScrollInterval;
+        const ITEMS_PER_PAGE = 5;
+        const AUTO_SCROLL_INTERVAL = 10000; // 10 Sekunden
+        let lastUpdateTime = 0;
+        let isFirstLoad = true;
+        let isDestroyed = false;
+
+        // Aufräumfunktion
+        function cleanup() {
+            if (autoScrollInterval) {
+                clearInterval(autoScrollInterval);
+                autoScrollInterval = null;
+            }
+            isDestroyed = true;
+        }
+
+        // Event-Listener für das Beenden der Seite
+        window.addEventListener('unload', cleanup);
+        window.addEventListener('beforeunload', cleanup);
+
+        function createZielElement(ziel, prozent, progressWidth, mindestbetragText, index) {
+            const div = document.createElement('div');
+            div.className = `city-container`;
+            div.dataset.id = ziel.id;
+            div.innerHTML = `
+                <div class="progress-bar" style="width: ${progressWidth}"></div>
+                <div class="ziel-info">
+                    ${ziel.ziel}${mindestbetragText}
+                </div>
+                <div class="betrag">
+                    ${ziel.gesamtbetrag} €
+                    <span class="prozent">(${Math.round(prozent)}%)</span>
+                </div>`;
+            return div;
+        }
+
+        function calculateZielData(ziel) {
+            let mindestbetragText = '';
+            let prozent = 100;
+            let progressWidth = '100%';
+
+            if (ziel.mindestbetrag && parseFloat(ziel.mindestbetrag) > 0) {
+                prozent = Math.min(100, (parseFloat(ziel.gesamtbetrag) / parseFloat(ziel.mindestbetrag)) * 100);
+                progressWidth = prozent + '%';
+                if (parseFloat(ziel.gesamtbetrag) < parseFloat(ziel.mindestbetrag)) {
+                    mindestbetragText = `<span class="mindestbetrag">(Mind. ${ziel.mindestbetrag} €)</span>`;
+                }
+            }
+
+            return { mindestbetragText, prozent, progressWidth };
+        }
+
+        function hasDataChanged(newData) {
+            if (!previousData) {
+                console.log('Erste Daten, Update erforderlich');
+                return true;
+            }
+            if (newData.length !== previousData.length) {
+                console.log('Anzahl der Ziele hat sich geändert');
+                return true;
+            }
+
+            const hasChanges = newData.some((newZiel, index) => {
+                const oldZiel = previousData[index];
+                const changed = newZiel.id !== oldZiel.id ||
+                       newZiel.ziel !== oldZiel.ziel ||
+                       parseFloat(newZiel.gesamtbetrag) !== parseFloat(oldZiel.gesamtbetrag) ||
+                       parseFloat(newZiel.mindestbetrag || 0) !== parseFloat(oldZiel.mindestbetrag || 0);
+                if (changed) {
+                    console.log('Änderung gefunden bei Ziel:', newZiel.ziel);
+                }
+                return changed;
+            });
+
+            return hasChanges;
+        }
+
+        function updatePaginationInfo(currentPage, totalPages) {
+            const paginationInfo = document.querySelector('.pagination-info');
+            if (totalPages > 1) {
+                paginationInfo.textContent = `${currentPage + 1}/${totalPages}`;
+                paginationInfo.style.display = 'block';
+            } else {
+                paginationInfo.style.display = 'none';
+            }
+        }
+
+        function displayCurrentPage(data, forceUpdate = false) {
+            const now = Date.now();
+            if (!forceUpdate && now - lastUpdateTime < 500) {
+                return;
+            }
+            lastUpdateTime = now;
+
+            const container = document.getElementById("erreichte-ziele");
+            const totalPages = Math.ceil(data.length / ITEMS_PER_PAGE);
+            
+            if (currentPage >= totalPages) {
+                currentPage = 0;
+            }
+
+            const start = currentPage * ITEMS_PER_PAGE;
+            const end = Math.min(start + ITEMS_PER_PAGE, data.length);
+            const currentPageData = data.slice(start, end);
+
+            if (isFirstLoad) {
+                // Beim ersten Laden einfach die Elemente anzeigen
+                updatePageContent();
+            } else {
+                // Fade-out Animation für bestehende Elemente
+                const elements = container.children;
+                Array.from(elements).forEach(element => {
+                    element.classList.add('fade-out');
+                });
+
+                // Nach der Fade-out Animation neue Elemente einfügen
+                setTimeout(updatePageContent, 500);
+            }
+
+            function updatePageContent() {
+                // Container leeren
+                container.innerHTML = '';
+
+                // Neue Elemente hinzufügen
+                currentPageData.forEach((ziel, index) => {
+                    const { mindestbetragText, prozent, progressWidth } = calculateZielData(ziel);
+                    const newElement = createZielElement(ziel, prozent, progressWidth, mindestbetragText, start + index);
+                    if (!isFirstLoad) {
+                        newElement.classList.add('fade-in');
+                    }
+                    container.appendChild(newElement);
+                });
+
+                // Pagination aktualisieren
+                updatePaginationInfo(currentPage, totalPages);
+            }
+
+                    isFirstLoad = false;
+        }
+
+        function startAutoScroll(data) {
+            if (isDestroyed) return;
+
+            if (autoScrollInterval) {
+                clearInterval(autoScrollInterval);
+            }
+
+            const totalPages = Math.ceil(data.length / ITEMS_PER_PAGE);
+            if (totalPages > 1) {
+                autoScrollInterval = setInterval(() => {
+                    if (isDestroyed) {
+                        clearInterval(autoScrollInterval);
+                        return;
+                    }
+                    currentPage = (currentPage + 1) % totalPages;
+                    displayCurrentPage(data, true);
+                }, AUTO_SCROLL_INTERVAL);
+            }
+        }
+
+        function loadZiele() {
+            if (isDestroyed) return;
+
+            const script = document.createElement('script');
+            script.src = 'get_ziele.php?callback=handleZiele';
+            document.body.appendChild(script);
+            script.onerror = function() {
+                console.error('Fehler beim Laden der Ziele');
+            };
+        }
+
+        function handleZiele(data) {
+            if (isDestroyed) return;
+
+            console.log('Rohdaten:', data); // Debug-Log
+
+            // Filtere nur die sichtbaren und erreichten Ziele (aber keine abgeschlossenen)
+            const filteredData = data
+                .filter(ziel => {
+                    console.log('Prüfe Ziel:', ziel.ziel, 'Sichtbar:', ziel.sichtbar, 'Abgeschlossen:', ziel.abgeschlossen, 'Gesamtbetrag:', ziel.gesamtbetrag, 'Mindestbetrag:', ziel.mindestbetrag); // Debug-Log
+                    const isVisible = ziel.sichtbar === 1 || ziel.sichtbar === "1";
+                    const isCompleted = (ziel.mindestbetrag && parseFloat(ziel.gesamtbetrag) >= parseFloat(ziel.mindestbetrag));
+                    const isNotDone = ziel.abgeschlossen !== 1 && ziel.abgeschlossen !== "1";
+                    return isVisible && isCompleted && isNotDone;
+                })
+                .sort((a, b) => a.ziel.localeCompare(b.ziel, 'de')); // Alphabetische Sortierung nach deutschem Alphabet
+
+            console.log('Gefilterte Daten:', filteredData); // Debug-Log
+
+            const widget = document.querySelector('.widget-container');
+            if (!widget) {
+                console.error('Widget-Container nicht gefunden!');
+                return;
+            }
+            
+            // Widget nur anzeigen wenn sichtbare Ziele vorhanden sind
+            if (filteredData.length === 0) {
+                console.log('Keine erreichten Ziele gefunden');
+                widget.style.display = 'none';
+                return;
+            }
+            
+            console.log('Zeige Widget mit', filteredData.length, 'Zielen'); // Debug-Log
+            
+            // Widget anzeigen und Daten aktualisieren
+            widget.style.display = 'block';
+            
+            // Nur aktualisieren wenn sich die Daten geändert haben
+            if (hasDataChanged(filteredData)) {
+                console.log('Daten haben sich geändert, aktualisiere Anzeige'); // Debug-Log
+                displayCurrentPage(filteredData);
+                startAutoScroll(filteredData);
+                previousData = JSON.parse(JSON.stringify(filteredData));
+            }
+
+            // Cleanup
+            const scripts = document.getElementsByTagName('script');
+            for(let i = scripts.length - 1; i >= 0; i--) {
+                if(scripts[i].src.includes('get_ziele.php')) {
+                    scripts[i].remove();
+                }
+            }
+        }
+
+        window.onload = function() {
+            if (isDestroyed) return;
+
+            const widget = document.querySelector('.widget-container');
+            if (!widget) return;
+
+            // Widget initial verstecken
+            widget.style.display = 'none';
+
+            const paginationInfo = document.createElement('div');
+            paginationInfo.className = 'pagination-info';
+            widget.appendChild(paginationInfo);
+
+            // Initiales Laden
+            loadZiele();
+            
+            // Regelmäßiges Update alle 5 Sekunden
+            const updateInterval = setInterval(() => {
+                if (isDestroyed) {
+                    clearInterval(updateInterval);
+                    return;
+                }
+                loadZiele();
+            }, 5000);
+        };
+    </script>
+</head>
+<body>
+
+<div class="widget-container">
+    <div class="title">🏆 Erreichte Ziele 🏆</div>
+    <div id="erreichte-ziele"></div>
+</div>
+
+</body>
+</html>
+

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Countdown Widget</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .widget-container {
+            background: rgba(0, 0, 0, 0.6); /* Halbtransparenter Hintergrund */
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+            display: inline-block;
+        }
+
+        .title {
+            font-size: 22px;
+            color: #fff;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .countdown {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            font-size: 48px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .time-box {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-align: center;
+            min-width: 80px;
+            position: relative;
+        }
+
+        .label {
+            font-size: 14px;
+            font-weight: 400;
+            color: #ddd;
+            margin-top: 5px;
+        }
+    </style>
+    <script>
+        let endTime = null;
+
+        function updateCountdown() {
+            if (!endTime) return; 
+
+            const now = new Date();
+            const diff = endTime - now;
+
+            if (diff <= 0) {
+                document.getElementById("countdown").innerHTML = "<span>Die Zielesammlung ist beendet!</span>";
+                return;
+            }
+
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+            document.getElementById("days").innerText = days.toString().padStart(2, '0');
+            document.getElementById("hours").innerText = hours.toString().padStart(2, '0');
+            document.getElementById("minutes").innerText = minutes.toString().padStart(2, '0');
+            document.getElementById("seconds").innerText = seconds.toString().padStart(2, '0');
+        }
+
+        function fetchZeitraum() {
+            fetch("get_zeitraum.php")
+                .then(response => response.json())
+                .then(data => {
+                    if (data.ende) {
+                        endTime = new Date(
+                            data.ende.replace(' Uhr', '')
+                                     .replace(/(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2})/, "$3-$2-$1T$4:$5:00Z")
+                        );
+                    } else {
+                        document.getElementById("countdown").innerHTML = "<span>Kein Zeitraum gesetzt.</span>";
+                        endTime = null;
+                    }
+                })
+                .catch(error => console.error("Fehler beim Laden des Zeitraums:", error));
+        }
+
+        window.onload = function() {
+            fetchZeitraum(); 
+            setInterval(fetchZeitraum, 10000);  // 🕒 Holt jede Minute neue Daten
+            setInterval(updateCountdown, 1000); // ⏳ Aktualisiert die Anzeige jede Sekunde
+        };
+    </script>
+</head>
+<body>
+
+<div class="widget-container">
+    <div class="title">Zielesammlung endet in:</div>
+    <div class="countdown" id="countdown">
+        <div class="time-box">
+            <div id="days">--</div>
+            <div class="label">Tage</div>
+        </div>
+        <div class="time-box">
+            <div id="hours">--</div>
+            <div class="label">Stunden</div>
+        </div>
+        <div class="time-box">
+            <div id="minutes">--</div>
+            <div class="label">Minuten</div>
+        </div>
+        <div class="time-box">
+            <div id="seconds">--</div>
+            <div class="label">Sekunden</div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
