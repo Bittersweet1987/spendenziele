@@ -27,4 +27,4 @@ INSERT IGNORE INTO zeitzonen (name) VALUES
     ('Europe/Madrid'),
     ('Europe/Paris'),
     ('Europe/Rome'),
-    ('UTC');
+    ('UTC'); 

@@ -1,420 +1,306 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
 session_start();
+require_once __DIR__ . '/config.php';
 
 if (!isset($_SESSION['admin_id'])) {
-    header('Location: admin_login.php');
-    exit();
+    die("<h3>Zugriff verweigert. Bitte <a href='admin_login.php'>einloggen</a>.</h3>");
 }
 
-class Updater {
-    private $currentStep = 1;
-    private $githubBaseUrl = 'https://raw.githubusercontent.com/Bittersweet1987/spendenziele/main/Datenbank/';
+// Funktion zum Abrufen der aktuellen Datenbankstruktur
+function getCurrentDatabaseStructure($pdo) {
+    $structure = [];
+    
+    // Hole alle Tabellen
+    $tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
+    
+    foreach ($tables as $table) {
+        // Hole die CREATE TABLE Anweisung
+        $createTable = $pdo->query("SHOW CREATE TABLE `$table`")->fetch(PDO::FETCH_ASSOC);
+        $structure[$table] = $createTable['Create Table'];
+        
+        // Hole detaillierte Spalteninformationen
+        $columns = $pdo->query("SHOW FULL COLUMNS FROM `$table`")->fetchAll(PDO::FETCH_ASSOC);
+        $structure[$table . '_columns'] = $columns;
+        
+        // Hole Indexinformationen
+        $indexes = $pdo->query("SHOW INDEX FROM `$table`")->fetchAll(PDO::FETCH_ASSOC);
+        $structure[$table . '_indexes'] = $indexes;
+    }
+    
+    return $structure;
+}
 
-    public function run() {
-        $this->showHeader("System Update");
+// Funktion zum Abrufen der GitHub-Struktur
+function getGitHubStructure() {
+    $githubBaseUrl = 'https://raw.githubusercontent.com/Bittersweet1987/spendenziele/main/Datenbank/';
+    
+    error_log("Debug - Versuche GitHub-Struktur zu laden von: " . $githubBaseUrl . 'structure.sql');
+    
+    // Setze Kontext-Optionen für die GitHub-Anfrage
+    $opts = [
+        'http' => [
+            'method' => 'GET',
+            'header' => [
+                'User-Agent: PHP'
+            ]
+        ],
+        'ssl' => [
+            'verify_peer' => false,
+            'verify_peer_name' => false
+        ]
+    ];
+    $context = stream_context_create($opts);
+    error_log("Debug - Stream Kontext erstellt mit Optionen: " . print_r($opts, true));
+    
+    // Versuche die structure.sql zu laden
+    $structureSQL = @file_get_contents($githubBaseUrl . 'structure.sql', false, $context);
+    
+    if ($structureSQL === false) {
+        $error = error_get_last();
+        error_log("Debug - Fehler beim Laden der Datei: " . print_r($error, true));
+        throw new Exception("Konnte Datenbankstruktur nicht von GitHub laden. URL: " . $githubBaseUrl . 'structure.sql' . 
+                          "\nFehlerdetails: " . ($error ? $error['message'] : 'Unbekannter Fehler'));
+    }
+    
+    error_log("Debug - Geladener Inhalt: " . substr($structureSQL, 0, 500) . "...");
+    
+    // Überprüfe ob der Inhalt tatsächlich SQL ist
+    if (stripos($structureSQL, 'CREATE TABLE') === false) {
+        error_log("Debug - Geladener Inhalt enthält kein 'CREATE TABLE'. Erste 1000 Zeichen: " . substr($structureSQL, 0, 1000));
+        throw new Exception("Die geladene Datei enthält keine SQL CREATE TABLE Anweisungen. Erhaltener Inhalt: " . substr($structureSQL, 0, 100) . "...");
+    }
+    
+    error_log("Debug - SQL-Struktur erfolgreich geladen");
+    return $structureSQL;
+}
 
-        // Bestimme den aktiven Tab basierend auf GET-Parameter
-        $activeTab = isset($_GET['step']) ? (int)$_GET['step'] : 1;
-
-        // AJAX-Handler für Datenbankprüfung
-        if (isset($_GET['action'])) {
-            switch ($_GET['action']) {
-                case 'check_database':
-                    $this->checkDatabaseStructure();
-                    exit;
-                case 'update_database':
-                    $this->updateDatabaseStructure();
-                    exit;
+// Funktion zum Vergleichen der Strukturen
+function compareStructures($currentStructure, $githubSQL) {
+    $differences = [];
+    
+    // Extrahiere CREATE TABLE Anweisungen aus GitHub SQL
+    preg_match_all("/CREATE TABLE `([^`]+)`[^;]+;/i", $githubSQL, $matches);
+    
+    if (!isset($matches[0]) || !isset($matches[1])) {
+        throw new Exception("Konnte keine Tabellenstrukturen aus GitHub SQL extrahieren");
+    }
+    
+    $githubTables = array_combine($matches[1], $matches[0]);
+    
+    // Vergleiche existierende Tabellen
+    foreach ($currentStructure as $tableName => $tableData) {
+        // Überspringe die _columns und _indexes Einträge
+        if (strpos($tableName, '_columns') !== false || strpos($tableName, '_indexes') !== false) {
+            continue;
+        }
+        
+        if (!isset($githubTables[$tableName])) {
+            $differences[] = "Tabelle '$tableName' existiert lokal, aber nicht in GitHub";
+            continue;
+        }
+        
+        // Normalisiere die CREATE TABLE Anweisungen für den Vergleich
+        $localCreate = preg_replace('/AUTO_INCREMENT=\d+/', '', $tableData);
+        $localCreate = preg_replace('/\s+/', ' ', trim($localCreate));
+        
+        $githubCreate = preg_replace('/AUTO_INCREMENT=\d+/', '', $githubTables[$tableName]);
+        $githubCreate = preg_replace('/\s+/', ' ', trim($githubCreate));
+        
+        if ($localCreate !== $githubCreate) {
+            $differences[] = "Struktur der Tabelle '$tableName' unterscheidet sich";
+            
+            // Detaillierte Unterschiede anzeigen
+            $localColumns = $currentStructure[$tableName . '_columns'];
+            $githubColumns = extractColumns($githubCreate);
+            
+            foreach ($localColumns as $column) {
+                $columnName = $column['Field'];
+                if (!isset($githubColumns[$columnName])) {
+                    $differences[] = "- Spalte '$columnName' in Tabelle '$tableName' existiert lokal, aber nicht in GitHub";
+                } elseif ($githubColumns[$columnName] !== $column['Type']) {
+                    $differences[] = "- Spalte '$columnName' in Tabelle '$tableName' hat unterschiedlichen Typ (Lokal: {$column['Type']}, GitHub: {$githubColumns[$columnName]})";
+                }
+            }
+            
+            foreach ($githubColumns as $columnName => $columnType) {
+                $found = false;
+                foreach ($localColumns as $column) {
+                    if ($column['Field'] === $columnName) {
+                        $found = true;
+                        break;
+                    }
+                }
+                if (!$found) {
+                    $differences[] = "- Spalte '$columnName' in Tabelle '$tableName' existiert in GitHub, aber nicht lokal";
+                }
             }
         }
+    }
+    
+    // Prüfe auf neue Tabellen in GitHub
+    foreach ($githubTables as $tableName => $createStatement) {
+        if (!isset($currentStructure[$tableName])) {
+            $differences[] = "Neue Tabelle '$tableName' in GitHub gefunden";
+        }
+    }
+    
+    return $differences;
+}
 
-        // Zeige Tabs
-        ?>
-        <div class="tab-content <?php echo $activeTab === 1 ? 'active' : ''; ?>" id="tab1">
-            <?php $this->showDatabaseTab(); ?>
+// Hilfsfunktion zum Extrahieren der Spalteninformationen aus CREATE TABLE
+function extractColumns($createStatement) {
+    $columns = [];
+    if (preg_match('/\((.*)\)/s', $createStatement, $matches)) {
+        $columnDefinitions = explode(',', $matches[1]);
+        foreach ($columnDefinitions as $definition) {
+            $definition = trim($definition);
+            if (preg_match('/`([^`]+)`\s+([^,\s]+)/', $definition, $matches)) {
+                $columns[$matches[1]] = $matches[2];
+            }
+        }
+    }
+    return $columns;
+}
+
+// Hauptlogik für die Update-Seite
+$error = '';
+$differences = [];
+
+if (isset($_POST['check_structure'])) {
+    try {
+        error_log("Debug - Starte Strukturprüfung");
+        $currentStructure = getCurrentDatabaseStructure($pdo);
+        error_log("Debug - Aktuelle Datenbankstruktur geladen: " . print_r(array_keys($currentStructure), true));
+        
+        $githubSQL = getGitHubStructure();
+        error_log("Debug - GitHub-Struktur geladen, Länge: " . strlen($githubSQL));
+        
+        $differences = compareStructures($currentStructure, $githubSQL);
+        error_log("Debug - Strukturvergleich abgeschlossen. Gefundene Unterschiede: " . print_r($differences, true));
+    } catch (Exception $e) {
+        error_log("Debug - Fehler aufgetreten: " . $e->getMessage() . "\nStacktrace: " . $e->getTraceAsString());
+        $error = "Fehler bei der Prüfung: " . $e->getMessage();
+    }
+}
+
+?>
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Update - System Update</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .steps {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .step {
+            padding: 10px 20px;
+            margin-right: 4px;
+            border-radius: 4px 4px 0 0;
+            cursor: pointer;
+            background-color: #e0e0e0;
+        }
+        .step.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .error-message {
+            color: #dc3545;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success-message {
+            color: #28a745;
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 4px;
+            transition: all 0.3s ease;
+        }
+        .btn-primary {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #45a049;
+        }
+        .differences-list {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        .differences-list li {
+            margin: 8px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+        .differences-list li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="steps">
+            <div class="step active">1. Datenbank Update</div>
+            <div class="step">2. Dateien Update</div>
+            <div class="step">3. Übersicht</div>
         </div>
-        <?php
 
-        $this->showFooter();
-    }
-
-    private function showHeader($title) {
-        ?>
-        <!DOCTYPE html>
-        <html lang="de">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Update - <?php echo htmlspecialchars($title); ?></title>
-            <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    line-height: 1.6;
-                    max-width: 800px;
-                    margin: 0 auto;
-                    padding: 20px;
-                    background-color: #f5f5f5;
-                }
-                .container {
-                    background-color: white;
-                    padding: 20px;
-                    border-radius: 8px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }
-                .tabs {
-                    display: flex;
-                    margin-bottom: 20px;
-                    border-bottom: 2px solid #e0e0e0;
-                }
-                .tab {
-                    padding: 10px 20px;
-                    margin-right: 4px;
-                    border-radius: 4px 4px 0 0;
-                    cursor: default;
-                    opacity: 0.5;
-                }
-                .tab.active {
-                    background-color: #4CAF50;
-                    color: white;
-                    opacity: 1;
-                }
-                .tab.completed {
-                    background-color: #81C784;
-                    color: white;
-                    opacity: 1;
-                }
-                .tab-content {
-                    display: none;
-                    padding: 20px;
-                }
-                .tab-content.active {
-                    display: block;
-                }
-                .button {
-                    display: inline-block;
-                    padding: 10px 20px;
-                    background-color: #4CAF50;
-                    color: white;
-                    text-decoration: none;
-                    border-radius: 4px;
-                    border: none;
-                    cursor: pointer;
-                    font-size: 14px;
-                }
-                .button:hover {
-                    background-color: #45a049;
-                }
-                .button:disabled {
-                    background-color: #cccccc;
-                    cursor: not-allowed;
-                }
-                .button-next {
-                    background-color: #2196F3;
-                }
-                .button-next:hover {
-                    background-color: #1976D2;
-                }
-                .button-update {
-                    background-color: #ff9800;
-                }
-                .button-update:hover {
-                    background-color: #f57c00;
-                }
-                .message {
-                    margin: 10px 0;
-                    padding: 10px;
-                    border-radius: 4px;
-                }
-                .success {
-                    background-color: #e8f5e9;
-                    color: #4CAF50;
-                    border: 1px solid #4CAF50;
-                }
-                .error {
-                    background-color: #ffebee;
-                    color: #f44336;
-                    border: 1px solid #f44336;
-                }
-                .info {
-                    background-color: #e3f2fd;
-                    color: #1976d2;
-                    border: 1px solid #1976d2;
-                }
-                .button-group {
-                    margin-top: 20px;
-                    display: flex;
-                    gap: 10px;
-                }
-                #updateStatus {
-                    margin-top: 20px;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="tabs">
-                    <div class="tab <?php echo $this->currentStep === 1 ? 'active' : ''; ?>">1. Datenbank Update</div>
-                    <div class="tab">2. Dateien Update</div>
-                    <div class="tab">3. Übersicht</div>
-                </div>
-        <?php
-    }
-
-    private function showFooter() {
-        ?>
-            </div>
-        </body>
-        </html>
-        <?php
-    }
-
-    private function showDatabaseTab() {
-        ?>
         <h2>Datenbank Update</h2>
         <p>Klicken Sie auf "Prüfen", um die Datenbankstruktur mit der aktuellen Version zu vergleichen.</p>
-        
-        <div id="updateStatus"></div>
-        
-        <div class="button-group">
-            <button onclick="checkDatabase()" class="button" id="checkButton">Prüfen</button>
-            <button onclick="updateDatabase()" class="button button-update" id="updateButton" style="display: none;">Updaten</button>
-            <a href="?step=2" class="button button-next" id="nextButton" style="display: none;">Weiter</a>
-        </div>
 
-        <script>
-        function checkDatabase() {
-            document.getElementById('checkButton').disabled = true;
-            document.getElementById('updateStatus').innerHTML = '<div class="message info">Prüfe Datenbankstruktur...</div>';
+        <?php if ($error): ?>
+            <div class="error-message"><?php echo htmlspecialchars($error); ?></div>
+        <?php endif; ?>
 
-            fetch('?action=check_database')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.needsUpdate) {
-                        document.getElementById('updateStatus').innerHTML = '<div class="message info">Änderungen gefunden! Klicken Sie auf "Updaten" um die Datenbank zu aktualisieren.</div>';
-                        document.getElementById('updateButton').style.display = 'inline-block';
-                    } else {
-                        document.getElementById('updateStatus').innerHTML = '<div class="message success">Keine Änderungen festgestellt.</div>';
-                        document.getElementById('nextButton').style.display = 'inline-block';
-                    }
-                    document.getElementById('checkButton').disabled = false;
-                })
-                .catch(error => {
-                    document.getElementById('updateStatus').innerHTML = '<div class="message error">Fehler bei der Prüfung: ' + error.message + '</div>';
-                    document.getElementById('checkButton').disabled = false;
-                });
-        }
+        <?php if (!empty($differences)): ?>
+            <div class="differences-list">
+                <h3>Gefundene Unterschiede:</h3>
+                <ul>
+                    <?php foreach ($differences as $diff): ?>
+                        <li><?php echo htmlspecialchars($diff); ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endif; ?>
 
-        function updateDatabase() {
-            document.getElementById('updateButton').disabled = true;
-            document.getElementById('updateStatus').innerHTML = '<div class="message info">Führe Update durch...</div>';
-
-            fetch('?action=update_database')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        document.getElementById('updateStatus').innerHTML = '<div class="message success">Update wurde erfolgreich durchgeführt!</div>';
-                        document.getElementById('updateButton').style.display = 'none';
-                        document.getElementById('nextButton').style.display = 'inline-block';
-                    } else {
-                        document.getElementById('updateStatus').innerHTML = '<div class="message error">Fehler beim Update: ' + data.error + '</div>';
-                        document.getElementById('updateButton').disabled = false;
-                    }
-                })
-                .catch(error => {
-                    document.getElementById('updateStatus').innerHTML = '<div class="message error">Fehler beim Update: ' + error.message + '</div>';
-                    document.getElementById('updateButton').disabled = false;
-                });
-        }
-        </script>
-        <?php
-    }
-
-    private function checkDatabaseStructure() {
-        header('Content-Type: application/json');
-        try {
-            require_once 'config.php';
-            
-            // Struktur-Datei von GitHub laden
-            $structureSQL = file_get_contents($this->githubBaseUrl . 'structure.sql');
-            if ($structureSQL === false) {
-                throw new Exception("Konnte Datenbankstruktur nicht von GitHub laden");
-            }
-
-            // Aktuelle Tabellenstruktur aus der Datenbank abrufen
-            $currentTables = [];
-            $tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
-            
-            foreach ($tables as $table) {
-                // Spalteninformationen abrufen
-                $columns = $pdo->query("SHOW COLUMNS FROM `$table`")->fetchAll(PDO::FETCH_ASSOC);
-                $currentTables[$table] = [];
-                foreach ($columns as $column) {
-                    $currentTables[$table][$column['Field']] = [
-                        'Type' => $column['Type'],
-                        'Null' => $column['Null'],
-                        'Key' => $column['Key'],
-                        'Default' => $column['Default'],
-                        'Extra' => $column['Extra']
-                    ];
-                }
-            }
-
-            // Extrahiere CREATE TABLE Statements
-            preg_match_all('/CREATE TABLE IF NOT EXISTS\s+`?(\w+)`?\s*\((.*?)\)/s', $structureSQL, $matches);
-            $differences = [];
-            
-            // Vergleiche jede Tabelle und ihre Struktur
-            for ($i = 0; $i < count($matches[1]); $i++) {
-                $tableName = $matches[1][$i];
-                $tableDefinition = $matches[2][$i];
-                
-                if (!isset($currentTables[$tableName])) {
-                    $differences[] = "Tabelle '$tableName' fehlt und wird erstellt";
-                    continue;
-                }
-                
-                // Extrahiere Spalteninformationen
-                preg_match_all('/`?(\w+)`?\s+([^,\n]+)(?:,|$)/m', $tableDefinition, $columnMatches);
-                
-                for ($j = 0; $j < count($columnMatches[1]); $j++) {
-                    $columnName = $columnMatches[1][$j];
-                    $columnDef = trim($columnMatches[2][$j]);
-                    
-                    // Analysiere Spaltendefinition
-                    $type = preg_replace('/\s.*/', '', $columnDef);
-                    $null = (stripos($columnDef, 'NOT NULL') !== false) ? 'NO' : 'YES';
-                    $key = (stripos($columnDef, 'PRIMARY KEY') !== false) ? 'PRI' : '';
-                    $default = null;
-                    if (preg_match('/DEFAULT\s+(\S+)/', $columnDef, $defaultMatch)) {
-                        $default = trim($defaultMatch[1], "'\"");
-                    }
-                    $extra = (stripos($columnDef, 'AUTO_INCREMENT') !== false) ? 'auto_increment' : '';
-
-                    if (!isset($currentTables[$tableName][$columnName])) {
-                        $differences[] = "Spalte '$tableName.$columnName' fehlt und wird hinzugefügt";
-                    } else {
-                        $current = $currentTables[$tableName][$columnName];
-                        
-                        // Vergleiche Spaltenattribute
-                        if (strtolower($current['Type']) !== strtolower($type)) {
-                            $differences[] = "Spalte '$tableName.$columnName' hat abweichenden Typ (IST: {$current['Type']}, SOLL: $type)";
-                        }
-                        if ($current['Null'] !== $null) {
-                            $differences[] = "Spalte '$tableName.$columnName' hat abweichende NULL-Erlaubnis";
-                        }
-                        if ($current['Key'] !== $key && $key === 'PRI') {
-                            $differences[] = "Spalte '$tableName.$columnName' fehlt Primary Key";
-                        }
-                        if ($current['Extra'] !== $extra && $extra === 'auto_increment') {
-                            $differences[] = "Spalte '$tableName.$columnName' fehlt Auto Increment";
-                        }
-                    }
-                }
-            }
-
-            // Extrahiere und prüfe ALTER TABLE Statements
-            preg_match_all('/ALTER TABLE\s+`?(\w+)`?\s+(.+?);/i', $structureSQL, $alterMatches);
-            if (!empty($alterMatches[0])) {
-                for ($i = 0; $i < count($alterMatches[1]); $i++) {
-                    $tableName = $alterMatches[1][$i];
-                    $alterDef = $alterMatches[2][$i];
-                    
-                    // Prüfe MODIFY Statements
-                    if (preg_match('/MODIFY\s+`?(\w+)`?\s+(.+)$/i', $alterDef, $modifyMatch)) {
-                        $columnName = $modifyMatch[1];
-                        $columnDef = $modifyMatch[2];
-                        
-                        if (isset($currentTables[$tableName][$columnName])) {
-                            $current = $currentTables[$tableName][$columnName];
-                            $type = preg_replace('/\s.*/', '', $columnDef);
-                            
-                            if (strtolower($current['Type']) !== strtolower($type)) {
-                                $differences[] = "Spalte '$tableName.$columnName' muss auf Typ $type geändert werden";
-                            }
-                        }
-                    }
-                }
-            }
-
-            echo json_encode([
-                'needsUpdate' => !empty($differences),
-                'differences' => $differences
-            ]);
-
-        } catch (Exception $e) {
-            http_response_code(500);
-            echo json_encode(['error' => $e->getMessage()]);
-        }
-    }
-
-    private function updateDatabaseStructure() {
-        header('Content-Type: application/json');
-        try {
-            require_once 'config.php';
-            
-            // Struktur-Datei von GitHub laden
-            $structureSQL = file_get_contents($this->githubBaseUrl . 'structure.sql');
-            if ($structureSQL === false) {
-                throw new Exception("Konnte Datenbankstruktur nicht von GitHub laden");
-            }
-
-            // Führe CREATE TABLE Statements aus
-            preg_match_all('/CREATE TABLE IF NOT EXISTS.*?;/s', $structureSQL, $matches);
-            foreach ($matches[0] as $sql) {
-                $pdo->exec($sql);
-            }
-
-            // Führe ALTER TABLE Statements aus
-            preg_match_all('/ALTER TABLE.*?;/s', $structureSQL, $matches);
-            foreach ($matches[0] as $sql) {
-                try {
-                    $pdo->exec($sql);
-                } catch (PDOException $e) {
-                    // Ignoriere nur bestimmte Fehler
-                    $errorInfo = $e->errorInfo;
-                    // 1060: Duplicate column
-                    // 1061: Duplicate key name
-                    // 1091: Can't DROP; check that column/key exists
-                    if (!in_array($errorInfo[1], [1060, 1061, 1091])) {
-                        throw $e;
-                    }
-                }
-            }
-
-            // Standard-Daten von GitHub laden und aktualisieren
-            $defaultDataSQL = file_get_contents($this->githubBaseUrl . 'default_data.sql');
-            if ($defaultDataSQL === false) {
-                throw new Exception("Konnte Standarddaten nicht von GitHub laden");
-            }
-
-            $statements = array_filter(
-                explode(';', $defaultDataSQL),
-                function($sql) { return trim($sql) != ''; }
-            );
-            
-            foreach ($statements as $sql) {
-                if (trim($sql) !== '') {
-                    try {
-                        $pdo->exec(trim($sql));
-                    } catch (PDOException $e) {
-                        // Ignoriere nur Duplikate bei INSERT IGNORE
-                        if (strpos($e->getMessage(), 'Duplicate') === false) {
-                            throw $e;
-                        }
-                    }
-                }
-            }
-
-            echo json_encode(['success' => true]);
-        } catch (Exception $e) {
-            http_response_code(500);
-            echo json_encode(['error' => $e->getMessage(), 'success' => false]);
-        }
-    }
-}
-
-$updater = new Updater();
-$updater->run(); 
+        <form method="post">
+            <button type="submit" name="check_structure" class="btn btn-primary">Prüfen</button>
+        </form>
+    </div>
+</body>
+</html> 
