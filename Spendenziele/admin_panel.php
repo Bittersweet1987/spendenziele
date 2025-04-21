@@ -105,6 +105,12 @@ $spenden = $stmtSpenden->fetchAll(PDO::FETCH_ASSOC);
 // Ziele + mindestbetrag laden
 $stmtziele = $pdo->query("SELECT id, ziel, gesamtbetrag, mindestbetrag, abgeschlossen, sichtbar FROM ziele ORDER BY gesamtbetrag DESC");
 $ziele = $stmtziele->fetchAll(PDO::FETCH_ASSOC);
+
+// Verarbeite Update-Commit wenn vorhanden
+if (isset($_POST['update_commit'])) {
+    $commitFile = __DIR__ . '/last_commit.txt';
+    file_put_contents($commitFile, $_POST['update_commit']);
+}
 ?>
 <!DOCTYPE html>
 <html lang="de">
