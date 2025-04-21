@@ -9,6 +9,53 @@ if (!isset($_SESSION['admin_id'])) {
 
 require_once __DIR__ . '/config.php';
 
+// Funktion zum Prüfen auf Updates
+function checkForUpdates() {
+    // GitHub API URL für das Repository
+    $githubApiUrl = 'https://api.github.com/repos/Bittersweet-Chocolate/spendenziele/commits';
+    
+    $opts = [
+        'http' => [
+            'method' => 'GET',
+            'header' => [
+                'User-Agent: PHP',
+                'Accept: application/vnd.github.v3+json'
+            ]
+        ]
+    ];
+    
+    $context = stream_context_create($opts);
+    $response = @file_get_contents($githubApiUrl, false, $context);
+    
+    if ($response === false) {
+        return false;
+    }
+    
+    $commits = json_decode($response, true);
+    if (!is_array($commits) || empty($commits)) {
+        return false;
+    }
+
+    // Lese den letzten bekannten Commit-Hash
+    $lastKnownCommitFile = __DIR__ . '/last_commit.txt';
+    $lastKnownCommit = @file_get_contents($lastKnownCommitFile) ?: '';
+    
+    // Aktuellster Commit von GitHub
+    $latestCommit = $commits[0]['sha'];
+    
+    // Wenn kein letzter Commit gespeichert ist, speichere den aktuellen und zeige kein Update an
+    if (empty($lastKnownCommit)) {
+        file_put_contents($lastKnownCommitFile, $latestCommit);
+        return false;
+    }
+    
+    // Vergleiche die Commits
+    return $lastKnownCommit !== $latestCommit;
+}
+
+// Prüfe auf Updates
+$updateAvailable = checkForUpdates();
+
 if (!$pdo) {
     echo json_encode(['error' => 'Fehler: Datenbankverbindung nicht vorhanden']);
     exit;
@@ -126,6 +173,10 @@ $ziele = $stmtziele->fetchAll(PDO::FETCH_ASSOC);
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         
+        .btn-orange { 
+            background-color: #ff8c00; 
+            color: #fff;
+        }
         .btn-yellow, .btn-min { 
             background-color: #ffc107; 
             color: #000;
@@ -267,6 +318,9 @@ $ziele = $stmtziele->fetchAll(PDO::FETCH_ASSOC);
         <div class="header-container">
             <h1>Admin-Panel</h1>
             <div class="header-buttons">
+                <?php if ($updateAvailable): ?>
+                <a href="update.php"><button class="btn btn-orange">🔄 Update verfügbar!</button></a>
+                <?php endif; ?>
                 <button class="btn btn-blue" onclick="openSettings()">⚙️ Einstellungen</button>
                 <a href="admin_logout.php"><button class="btn btn-red">🚪 Logout</button></a>
             </div>
