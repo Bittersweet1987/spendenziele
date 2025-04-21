@@ -98,7 +98,7 @@ function debugLog($message, $data = null) {
 }
 
 // Funktion zum Abrufen der GitHub Commit-Version
-function getLatestGitHubCommit() {
+function getLatestGitHubCommit($force = false) {
     debugLog("=== Start: GitHub Latest Commit Abfrage ===");
     
     // Hole den GitHub Token aus der Konfiguration
@@ -703,7 +703,7 @@ $status = '';
 $updateResults = null;
 $fileUpdateResults = null;
 $currentCommit = getCurrentCommit();
-$latestCommit = getLatestGitHubCommit();
+$latestCommit = getLatestGitHubCommit(true);
 $currentStep = isset($_GET['step']) ? (int)$_GET['step'] : 1;
 
 if (isset($_POST['apply_updates']) && $currentStep === 1) {
@@ -1319,7 +1319,7 @@ if ($currentStep > 2 && !isset($_SESSION['step2_completed'])) {
             <script>
             // Funktion zum Prüfen des Update-Status
             function checkUpdateStatus() {
-                fetch('check_update.php')
+                fetch('check_version.php?type=update')
                     .then(response => response.json())
                     .then(data => {
                         if (data.status === 'updated') {

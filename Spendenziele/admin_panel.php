@@ -3,11 +3,12 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 session_start();
 
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/functions.php';
+
 if (!isset($_SESSION['admin_id'])) {
     die("<h3>Zugriff verweigert. Bitte <a href='admin_login.php'>einloggen</a>.</h3>");
 }
-
-require_once __DIR__ . '/config.php';
 
 // Funktion zum Prüfen auf Updates
 function checkForUpdates() {
@@ -924,14 +925,6 @@ if (isset($_POST['update_commit'])) {
             Promise.all([updateZieleTable(), updateSpendenTable()])
                 .catch(error => console.error('Fehler beim Aktualisieren der Tabellen:', error));
         }
-
-        // Initiale Aktualisierung beim Laden der Seite
-        document.addEventListener('DOMContentLoaded', () => {
-            refreshTables();
-            
-            // Automatische Aktualisierung alle 5 Sekunden
-            setInterval(refreshTables, 5000);
-        });
     </script>
 </body>
 </html>
