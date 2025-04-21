@@ -740,6 +740,7 @@ if (isset($_POST['update_files']) && $currentStep === 2) {
 if ($currentStep === 3 && isset($latestCommit['hash'])) {
     file_put_contents(__DIR__ . '/last_commit.txt', $latestCommit['hash']);
     $_SESSION['current_commit'] = $latestCommit['hash'];
+    $_SESSION['update_timestamp'] = time();
 }
 
 // Lade gespeicherte Ergebnisse aus der Session
@@ -1308,12 +1309,31 @@ if ($currentStep > 2 && !isset($_SESSION['step2_completed'])) {
 
         <?php elseif ($currentStep === 3): ?>
             <?php
-            // Aktualisiere die Commit-Informationen immer in Schritt 3
+            // Aktualisiere die Commit-Informationen sofort bei Aufruf von Schritt 3
             if (isset($latestCommit['hash'])) {
                 file_put_contents(__DIR__ . '/last_commit.txt', $latestCommit['hash']);
                 $_SESSION['current_commit'] = $latestCommit['hash'];
+                $_SESSION['update_timestamp'] = time();
             }
             ?>
+            <script>
+            // Funktion zum Prüfen des Update-Status
+            function checkUpdateStatus() {
+                fetch('check_update.php')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'updated') {
+                            // Wenn das Update abgeschlossen ist, Seite neu laden
+                            window.location.reload();
+                        }
+                    })
+                    .catch(error => console.error('Fehler beim Prüfen des Update-Status:', error));
+            }
+
+            // Prüfe alle 10 Sekunden den Status
+            setInterval(checkUpdateStatus, 10000);
+            </script>
+
             <h2>Übersicht</h2>
             
             <?php if (isset($updateResults) || isset($fileUpdateResults)): ?>
