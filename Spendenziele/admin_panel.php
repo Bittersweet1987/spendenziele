@@ -441,13 +441,16 @@ if (isset($_POST['update_commit'])) {
                     $minSetzenButton = ($goal['abgeschlossen'] == 0) 
                         ? "<button class='btn btn-yellow' onclick='setMindestbetrag($cid, \"$mindestbetrag\")'>Min setzen</button>" 
                         : "";
+
+                    // Füge den Löschen-Button hinzu
+                    $loeschenBtn = "<button class='btn btn-red' onclick='deleteZiel($cid, \"$cname\")'>Löschen</button>";
                 ?>
                 <tr>
                     <td><?= $cname ?></td>
                     <td><?= $cges ?> €</td>
                     <td><?= $mbString ?></td>
                     <td><?= $status ?></td>
-                    <td><?= $minSetzenButton ?> <?= $actionButton ?> <?= $sichtbarBtn ?></td>
+                    <td><?= $minSetzenButton ?> <?= $actionButton ?> <?= $sichtbarBtn ?> <?= $loeschenBtn ?></td>
                 </tr>
                 <?php endforeach; ?>
             <?php else: ?>
@@ -833,13 +836,17 @@ if (isset($_POST['update_commit'])) {
                     }
 
                     const sichtbarBtn = `<button class='${sichtbar ? "visible-btn" : "hidden-btn"}' onclick='toggleZielSichtbarkeit(${cid})'>${sichtbar ? "Verstecken" : "Anzeigen"}</button>`;
-                    const actionButton = (mindestbetrag !== null && parseFloat(cges) >= parseFloat(mindestbetrag) && !abgeschlossen) 
+
+                    // Füge den Löschen-Button hinzu
+                    const loeschenBtn = `<button class='btn btn-red' onclick='deleteZiel(${cid}, "${cname}")'>Löschen</button>`;
+
+                    // Füge den Min setzen Button hinzu, wenn das Ziel nicht abgeschlossen ist
+                    const minSetzenBtn = !abgeschlossen ? `<button class='btn btn-yellow' onclick='setMindestbetrag(${cid}, "${mindestbetrag}")'>Min setzen</button>` : '';
+
+                    // Füge den Als erledigt markieren Button hinzu, wenn das Ziel erreicht aber nicht abgeschlossen ist
+                    const actionBtn = (mindestbetrag !== null && parseFloat(cges) >= parseFloat(mindestbetrag) && !abgeschlossen) 
                         ? `<button class='complete-btn' onclick='markAsCompleted(${cid})'>Als erledigt markieren</button>` 
-                        : "";
-                    const minSetzenButton = !abgeschlossen 
-                        ? `<button class='btn btn-yellow' onclick='setMindestbetrag(${cid}, "${mindestbetrag}")'>Min setzen</button>` 
-                        : "";
-                    const deleteButton = `<button class='btn btn-red' onclick='deleteZiel(${cid}, "${cname}")'>Löschen</button>`;
+                        : '';
 
                     newTable += `
                         <tr>
@@ -847,7 +854,7 @@ if (isset($_POST['update_commit'])) {
                             <td>${cges} €</td>
                             <td>${mbString}</td>
                             <td>${status}</td>
-                            <td>${minSetzenButton} ${actionButton} ${sichtbarBtn} ${deleteButton}</td>
+                            <td>${minSetzenBtn} ${actionBtn} ${sichtbarBtn} ${loeschenBtn}</td>
                         </tr>`;
                 });
 
