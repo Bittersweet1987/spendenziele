@@ -439,36 +439,22 @@ function normalizeType($type) {
 // Funktion zum Ausführen der Struktur-Updates
 function applyStructureUpdates($pdo) {
     $results = [
-        'added' => [],
         'updated' => [],
-        'unchanged' => [],
         'errors' => []
     ];
 
     try {
-        // Prüfe ob die Spalte existiert
-        $stmt = $pdo->query("SHOW COLUMNS FROM ziele LIKE 'ziel'");
-        $columnExists = $stmt->fetch(PDO::FETCH_ASSOC);
-        $stmt->closeCursor();
-
-        if (!$columnExists) {
-            // Füge die Spalte hinzu
-            $pdo->exec("ALTER TABLE ziele ADD COLUMN ziel VARCHAR(100) NOT NULL UNIQUE AFTER id");
-            
-            // Stelle die Daten aus der spenden-Tabelle wieder her
-            $pdo->exec("INSERT IGNORE INTO ziele (ziel) SELECT DISTINCT ziel FROM spenden");
-            
-            $results['updated'][] = "Spalte 'ziel' wurde wiederhergestellt und mit Daten befüllt";
-        } else {
-            $results['unchanged'][] = "Spalte 'ziel' existiert bereits";
-        }
+        // Füge die Spalte ziel hinzu
+        $pdo->exec("ALTER TABLE ziele ADD COLUMN ziel VARCHAR(100) NOT NULL UNIQUE AFTER id");
+        $results['updated'][] = "Spalte 'ziel' wurde hinzugefügt";
+        
+        // Kopiere die Daten
+        $pdo->exec("INSERT IGNORE INTO ziele (ziel) SELECT DISTINCT ziel FROM spenden");
+        $results['updated'][] = "Daten wurden kopiert";
 
         return $results;
     } catch (Exception $e) {
-        $results['errors'][] = [
-            'sql' => 'Spalte ziel wiederherstellen',
-            'error' => $e->getMessage()
-        ];
+        $results['errors'][] = $e->getMessage();
         return $results;
     }
 }
@@ -1198,7 +1184,7 @@ if ($currentStep > 2 && !isset($_SESSION['step2_completed'])) {
 
         <?php elseif ($currentStep === 3): ?>
             <?php
-            // Aktualisiere die Commit-Informationen sofort
+            // Aktualisiere die Commit-Informationen NUR in Schritt 3
             if (isset($latestCommit['hash'])) {
                 // Schreibe die neue Version in die Datei
                 file_put_contents(__DIR__ . '/last_commit.txt', $latestCommit['hash']);
