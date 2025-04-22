@@ -14,6 +14,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id = intval($input['id']);
     $neue_ziel = htmlspecialchars($input['neue_ziel']);
 
+    if (empty($neue_ziel)) {
+        echo json_encode(['error' => 'Das Ziel darf nicht leer sein']);
+        exit;
+    }
+
     try {
         $pdo->beginTransaction();
 
