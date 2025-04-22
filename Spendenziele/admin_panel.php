@@ -104,8 +104,32 @@ $stmtSpenden = $pdo->query("SELECT id, benutzername, betrag, ziel, datum FROM sp
 $spenden = $stmtSpenden->fetchAll(PDO::FETCH_ASSOC);
 
 // Ziele + mindestbetrag laden
-$stmtziele = $pdo->query("SELECT id, ziel, gesamtbetrag, mindestbetrag, abgeschlossen, sichtbar FROM ziele ORDER BY gesamtbetrag DESC");
-$ziele = $stmtziele->fetchAll(PDO::FETCH_ASSOC);
+try {
+    // Debug: Tabellenstruktur anzeigen
+    $columns = $pdo->query("SHOW COLUMNS FROM ziele");
+    error_log("=== Tabellenstruktur von 'ziele' ===");
+    while($column = $columns->fetch(PDO::FETCH_ASSOC)) {
+        error_log(print_r($column, true));
+    }
+    
+    // Daten abrufen
+    $stmtziele = $pdo->query("SELECT * FROM ziele ORDER BY gesamtbetrag DESC");
+    $ziele = $stmtziele->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Debug: Erste Zeile der Daten anzeigen
+    if (!empty($ziele)) {
+        error_log("=== Erste Zeile der Ziele-Daten ===");
+        error_log(print_r($ziele[0], true));
+    } else {
+        error_log("Keine Ziele in der Datenbank gefunden!");
+    }
+} catch (PDOException $e) {
+    error_log("Datenbankfehler: " . $e->getMessage());
+}
+
+// Debug-Ausgabe
+error_log("Ziele aus der Datenbank:");
+error_log(print_r($ziele, true));
 
 // Verarbeite Update-Commit wenn vorhanden
 if (isset($_POST['update_commit'])) {
@@ -408,7 +432,7 @@ if (isset($_POST['update_commit'])) {
             <?php if ($ziele): ?>
                 <?php foreach ($ziele as $goal):
                     $cid = $goal['id'];
-                    $cname = htmlspecialchars($goal['ziel']);
+                    $zielname = htmlspecialchars($goal['ziel']);
                     $cges = htmlspecialchars($goal['gesamtbetrag']);
                     $mindestbetrag = $goal['mindestbetrag'];
                     $sichtbar = isset($goal['sichtbar']) ? $goal['sichtbar'] : 0;
@@ -443,8 +467,8 @@ if (isset($_POST['update_commit'])) {
                         : "";
                 ?>
                 <tr>
-                    <td><?= htmlspecialchars($goal['ziel']) ?></td>
-                    <td><?= htmlspecialchars($goal['gesamtbetrag']) ?> €</td>
+                    <td><?= $zielname ?></td>
+                    <td><?= $cges ?> €</td>
                     <td><?= $mbString ?></td>
                     <td><?= $status ?></td>
                     <td><?= $minSetzenButton ?> <?= $actionButton ?> <?= $sichtbarBtn ?></td>
