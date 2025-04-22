@@ -443,8 +443,8 @@ if (isset($_POST['update_commit'])) {
                         : "";
                 ?>
                 <tr>
-                    <td><?= $cname ?></td>
-                    <td><?= $cges ?> €</td>
+                    <td><?= htmlspecialchars($goal['ziel']) ?></td>
+                    <td><?= htmlspecialchars($goal['gesamtbetrag']) ?> €</td>
                     <td><?= $mbString ?></td>
                     <td><?= $status ?></td>
                     <td><?= $minSetzenButton ?> <?= $actionButton ?> <?= $sichtbarBtn ?></td>
@@ -807,9 +807,6 @@ if (isset($_POST['update_commit'])) {
                     </tr>`;
 
                 data.forEach(goal => {
-                    const cid = goal.id;
-                    const cname = goal.ziel;
-                    const cges = goal.gesamtbetrag;
                     const mindestbetrag = goal.mindestbetrag;
                     const sichtbar = parseInt(goal.sichtbar) === 1;
                     const abgeschlossen = parseInt(goal.abgeschlossen) === 1;
@@ -826,25 +823,25 @@ if (isset($_POST['update_commit'])) {
                     let status;
                     if (abgeschlossen) {
                         status = "✅ Abgeschlossen";
-                    } else if (mindestbetrag !== null && parseFloat(cges) >= parseFloat(mindestbetrag)) {
+                    } else if (mindestbetrag !== null && parseFloat(goal.gesamtbetrag) >= parseFloat(mindestbetrag)) {
                         status = "✔️ Erreicht";
                     } else {
                         status = "❌ Noch offen";
                     }
 
-                    const sichtbarBtn = `<button class='${sichtbar ? "visible-btn" : "hidden-btn"}' onclick='toggleZielSichtbarkeit(${cid})'>${sichtbar ? "Verstecken" : "Anzeigen"}</button>`;
-                    const actionButton = (mindestbetrag !== null && parseFloat(cges) >= parseFloat(mindestbetrag) && !abgeschlossen) 
-                        ? `<button class='complete-btn' onclick='markAsCompleted(${cid})'>Als erledigt markieren</button>` 
+                    const sichtbarBtn = `<button class='${sichtbar ? "visible-btn" : "hidden-btn"}' onclick='toggleZielSichtbarkeit(${goal.id})'>${sichtbar ? "Verstecken" : "Anzeigen"}</button>`;
+                    const actionButton = (mindestbetrag !== null && parseFloat(goal.gesamtbetrag) >= parseFloat(mindestbetrag) && !abgeschlossen) 
+                        ? `<button class='complete-btn' onclick='markAsCompleted(${goal.id})'>Als erledigt markieren</button>` 
                         : "";
                     const minSetzenButton = !abgeschlossen 
-                        ? `<button class='btn btn-yellow' onclick='setMindestbetrag(${cid}, "${mindestbetrag}")'>Min setzen</button>` 
+                        ? `<button class='btn btn-yellow' onclick='setMindestbetrag(${goal.id}, "${mindestbetrag}")'>Min setzen</button>` 
                         : "";
-                    const deleteButton = `<button class='btn btn-red' onclick='deleteZiel(${cid}, "${cname}")'>Löschen</button>`;
+                    const deleteButton = `<button class='btn btn-red' onclick='deleteZiel(${goal.id}, "${goal.ziel}")'>Löschen</button>`;
 
                     newTable += `
                         <tr>
-                            <td>${cname}</td>
-                            <td>${cges} €</td>
+                            <td>${goal.ziel}</td>
+                            <td>${goal.gesamtbetrag} €</td>
                             <td>${mbString}</td>
                             <td>${status}</td>
                             <td>${minSetzenButton} ${actionButton} ${sichtbarBtn} ${deleteButton}</td>
