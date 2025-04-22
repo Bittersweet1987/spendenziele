@@ -107,32 +107,32 @@ $spenden = $stmtSpenden->fetchAll(PDO::FETCH_ASSOC);
 try {
     // Funktion zum Loggen
     function debugLog($message) {
-        // In Datei schreiben
-        file_put_contents(__DIR__ . '/debug.log', date('Y-m-d H:i:s') . ' - ' . print_r($message, true) . "\n", FILE_APPEND);
-        // Für Browser-Konsole vorbereiten
+        $log = date('Y-m-d H:i:s') . ' - ' . (is_array($message) ? json_encode($message, JSON_PRETTY_PRINT) : $message) . "\n";
+        file_put_contents(__DIR__ . '/debug.log', $log, FILE_APPEND);
         echo "<script>console.log(" . json_encode($message) . ");</script>\n";
     }
 
-    // Debug: Tabellenstruktur anzeigen
+    // Debug: Spaltennamen der Tabelle ziele
     $columns = $pdo->query("SHOW COLUMNS FROM ziele");
-    debugLog("=== Tabellenstruktur von 'ziele' ===");
-    $columnInfo = [];
+    debugLog("=== SPALTENNAMEN DER TABELLE 'ziele' ===");
+    $columnNames = [];
     while($column = $columns->fetch(PDO::FETCH_ASSOC)) {
-        $columnInfo[] = $column;
+        $columnNames[] = $column['Field'] . ' (' . $column['Type'] . ')';
     }
-    debugLog($columnInfo);
+    debugLog($columnNames);
     
-    // Daten abrufen
+    // Beispieldatensatz anzeigen
+    $stmtziele = $pdo->query("SELECT * FROM ziele LIMIT 1");
+    $beispiel = $stmtziele->fetch(PDO::FETCH_ASSOC);
+    if ($beispiel) {
+        debugLog("=== BEISPIELDATENSATZ AUS 'ziele' ===");
+        debugLog($beispiel);
+    }
+    
+    // Alle Ziele abrufen
     $stmtziele = $pdo->query("SELECT * FROM ziele ORDER BY gesamtbetrag DESC");
     $ziele = $stmtziele->fetchAll(PDO::FETCH_ASSOC);
     
-    // Debug: Erste Zeile der Daten anzeigen
-    if (!empty($ziele)) {
-        debugLog("=== Erste Zeile der Ziele-Daten ===");
-        debugLog($ziele[0]);
-    } else {
-        debugLog("Keine Ziele in der Datenbank gefunden!");
-    }
 } catch (PDOException $e) {
     debugLog("Datenbankfehler: " . $e->getMessage());
 }
