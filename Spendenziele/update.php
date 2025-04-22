@@ -502,35 +502,26 @@ function applyStructureUpdates($pdo) {
         
         debugLog("SQL-Struktur geladen");
         
-        // Entferne Kommentare
+        // Entferne Kommentare und DELIMITER-Anweisungen
         $githubSQL = preg_replace('/--[^\n]*\n/', "\n", $githubSQL);
         $githubSQL = preg_replace('/\/\*.*?\*\//s', '', $githubSQL);
+        $githubSQL = preg_replace('/DELIMITER\s+[\/\/|;]/', '', $githubSQL);
         
-        // Teile die SQL in Blöcke auf
-        $sqlBlocks = preg_split('/DELIMITER\s+[\/\/|;]/', $githubSQL);
+        // Teile die SQL in einzelne Statements
+        $statements = array_filter(array_map('trim', explode(';', $githubSQL)));
         
-        foreach ($sqlBlocks as $block) {
-            if (empty(trim($block))) continue;
+        foreach ($statements as $statement) {
+            if (empty(trim($statement))) continue;
             
-            // Teile den Block in einzelne Statements
-            $statements = array_filter(array_map('trim', explode(';', $block)));
-            
-            foreach ($statements as $statement) {
-                if (empty(trim($statement))) continue;
-                
-                // Überspringe DELIMITER Anweisungen
-                if (stripos($statement, 'DELIMITER') === 0) continue;
-                
-                debugLog("Führe Statement aus:", $statement);
-                try {
-                    $pdo->exec($statement);
-                    debugLog("Statement erfolgreich ausgeführt");
-                } catch (PDOException $e) {
-                    debugLog("Fehler beim Ausführen des Statements: " . $e->getMessage());
-                    // Werfe den Fehler nur weiter, wenn es kein bekannter/ignorierbarer Fehler ist
-                    if (!in_array($e->getCode(), ['42S21', '42S22', '42000'])) {
-                        throw $e;
-                    }
+            debugLog("Führe Statement aus:", $statement);
+            try {
+                $pdo->exec($statement);
+                debugLog("Statement erfolgreich ausgeführt");
+            } catch (PDOException $e) {
+                debugLog("Fehler beim Ausführen des Statements: " . $e->getMessage());
+                // Werfe den Fehler nur weiter, wenn es kein bekannter/ignorierbarer Fehler ist
+                if (!in_array($e->getCode(), ['42S21', '42S22', '42000'])) {
+                    throw $e;
                 }
             }
         }
