@@ -52,93 +52,50 @@ CREATE TABLE IF NOT EXISTS zeitraum (
 );
 
 -- Strukturanpassungen für bestehende Tabellen
-DROP PROCEDURE IF EXISTS modify_columns_if_exist;
 
-CREATE PROCEDURE modify_columns_if_exist()
-BEGIN
-    -- Admin Tabelle
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'admin' AND COLUMN_NAME = 'benutzername' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE admin MODIFY benutzername VARCHAR(50) UNIQUE NOT NULL;
-    END IF;
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'admin' AND COLUMN_NAME = 'passwort_hash' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE admin MODIFY passwort_hash VARCHAR(255) NOT NULL;
-    END IF;
+-- Umbenennung der Spalte 'name' zu 'ziel' in der Tabelle 'ziele'
+SET @column_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_NAME = 'ziele' 
+    AND COLUMN_NAME = 'name' 
+    AND TABLE_SCHEMA = DATABASE());
 
-    -- Moderatoren Tabelle
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'moderatoren' AND COLUMN_NAME = 'benutzername' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE moderatoren MODIFY benutzername VARCHAR(50) UNIQUE NOT NULL;
-    END IF;
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'moderatoren' AND COLUMN_NAME = 'passwort_hash' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE moderatoren MODIFY passwort_hash VARCHAR(255) NOT NULL;
-    END IF;
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'moderatoren' AND COLUMN_NAME = 'status' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE moderatoren MODIFY status ENUM('aktiv', 'inaktiv') NOT NULL DEFAULT 'aktiv';
-    END IF;
+SET @sql = IF(@column_exists > 0, 
+    'ALTER TABLE `ziele` CHANGE `name` `ziel` VARCHAR(100) NOT NULL',
+    'SELECT 1');
 
-    -- Spenden Tabelle
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'spenden' AND COLUMN_NAME = 'benutzername' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE spenden MODIFY benutzername VARCHAR(255) NOT NULL;
-    END IF;
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'spenden' AND COLUMN_NAME = 'betrag' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE spenden MODIFY betrag DECIMAL(10,2) NOT NULL;
-    END IF;
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'spenden' AND COLUMN_NAME = 'ziel' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE spenden MODIFY ziel VARCHAR(100) NOT NULL;
-    END IF;
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'spenden' AND COLUMN_NAME = 'datum' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE spenden MODIFY datum DATETIME DEFAULT CURRENT_TIMESTAMP;
-    END IF;
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
-    -- Ziele Tabelle
-    SET @renameColumn = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_NAME = 'ziele' 
-        AND COLUMN_NAME = 'name' 
-        AND TABLE_SCHEMA = DATABASE());
-    SET @alterStmt = IF(@renameColumn > 0,
-        'ALTER TABLE `ziele` CHANGE `name` `ziel` VARCHAR(100) NOT NULL',
-        'SELECT "Spalte name existiert nicht"');
-    PREPARE stmt FROM @alterStmt;
-    EXECUTE stmt;
-    DEALLOCATE PREPARE stmt;
+-- Anpassung der Spalten in der Tabelle 'ziele'
+ALTER TABLE `ziele` MODIFY COLUMN `ziel` VARCHAR(100) NOT NULL;
+ALTER TABLE `ziele` MODIFY COLUMN `gesamtbetrag` DECIMAL(10,2) NOT NULL DEFAULT 0.00;
+ALTER TABLE `ziele` MODIFY COLUMN `mindestbetrag` DECIMAL(10,2) DEFAULT NULL;
+ALTER TABLE `ziele` MODIFY COLUMN `abgeschlossen` TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE `ziele` MODIFY COLUMN `sichtbar` TINYINT(1) NOT NULL DEFAULT 0;
 
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ziele' AND COLUMN_NAME = 'ziel' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE ziele MODIFY ziel VARCHAR(100) NOT NULL;
-    END IF;
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ziele' AND COLUMN_NAME = 'gesamtbetrag' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE ziele MODIFY gesamtbetrag DECIMAL(10,2) NOT NULL DEFAULT 0.00;
-    END IF;
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ziele' AND COLUMN_NAME = 'mindestbetrag' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE ziele MODIFY mindestbetrag DECIMAL(10,2) DEFAULT NULL;
-    END IF;
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ziele' AND COLUMN_NAME = 'abgeschlossen' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE ziele MODIFY abgeschlossen TINYINT(1) NOT NULL DEFAULT 0;
-    END IF;
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ziele' AND COLUMN_NAME = 'sichtbar' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE ziele MODIFY sichtbar TINYINT(1) NOT NULL DEFAULT 0;
-    END IF;
+-- Anpassung der Spalten in der Tabelle 'admin'
+ALTER TABLE `admin` MODIFY COLUMN `benutzername` VARCHAR(50) UNIQUE NOT NULL;
+ALTER TABLE `admin` MODIFY COLUMN `passwort_hash` VARCHAR(255) NOT NULL;
 
-    -- Einstellungen Tabelle
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'einstellungen' AND COLUMN_NAME = 'schluessel' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE einstellungen MODIFY schluessel VARCHAR(255) NOT NULL;
-    END IF;
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'einstellungen' AND COLUMN_NAME = 'wert' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE einstellungen MODIFY wert TEXT NOT NULL;
-    END IF;
+-- Anpassung der Spalten in der Tabelle 'moderatoren'
+ALTER TABLE `moderatoren` MODIFY COLUMN `benutzername` VARCHAR(50) UNIQUE NOT NULL;
+ALTER TABLE `moderatoren` MODIFY COLUMN `passwort_hash` VARCHAR(255) NOT NULL;
+ALTER TABLE `moderatoren` MODIFY COLUMN `status` ENUM('aktiv', 'inaktiv') NOT NULL DEFAULT 'aktiv';
 
-    -- Zeitzonen Tabelle
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'zeitzonen' AND COLUMN_NAME = 'name' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE zeitzonen MODIFY name VARCHAR(255) NOT NULL UNIQUE;
-    END IF;
+-- Anpassung der Spalten in der Tabelle 'spenden'
+ALTER TABLE `spenden` MODIFY COLUMN `benutzername` VARCHAR(255) NOT NULL;
+ALTER TABLE `spenden` MODIFY COLUMN `betrag` DECIMAL(10,2) NOT NULL;
+ALTER TABLE `spenden` MODIFY COLUMN `ziel` VARCHAR(100) NOT NULL;
+ALTER TABLE `spenden` MODIFY COLUMN `datum` DATETIME DEFAULT CURRENT_TIMESTAMP;
 
-    -- Zeitraum Tabelle
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'zeitraum' AND COLUMN_NAME = 'start' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE zeitraum MODIFY start DATETIME NOT NULL;
-    END IF;
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'zeitraum' AND COLUMN_NAME = 'ende' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE zeitraum MODIFY ende DATETIME NOT NULL;
-    END IF;
-END;
+-- Anpassung der Spalten in der Tabelle 'einstellungen'
+ALTER TABLE `einstellungen` MODIFY COLUMN `schluessel` VARCHAR(255) NOT NULL;
+ALTER TABLE `einstellungen` MODIFY COLUMN `wert` TEXT NOT NULL;
 
-CALL modify_columns_if_exist();
+-- Anpassung der Spalten in der Tabelle 'zeitzonen'
+ALTER TABLE `zeitzonen` MODIFY COLUMN `name` VARCHAR(255) NOT NULL UNIQUE;
 
-DROP PROCEDURE IF EXISTS modify_columns_if_exist; 
+-- Anpassung der Spalten in der Tabelle 'zeitraum'
+ALTER TABLE `zeitraum` MODIFY COLUMN `start` DATETIME NOT NULL;
+ALTER TABLE `zeitraum` MODIFY COLUMN `ende` DATETIME NOT NULL; 
