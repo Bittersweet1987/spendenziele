@@ -52,8 +52,7 @@ CREATE TABLE IF NOT EXISTS zeitraum (
 );
 
 -- Strukturanpassungen für bestehende Tabellen
-DELIMITER //
-DROP PROCEDURE IF EXISTS modify_columns_if_exist//
+DROP PROCEDURE IF EXISTS modify_columns_if_exist;
 CREATE PROCEDURE modify_columns_if_exist()
 BEGIN
     -- Admin Tabelle
@@ -137,8 +136,7 @@ BEGIN
     IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'zeitraum' AND COLUMN_NAME = 'ende' AND TABLE_SCHEMA = DATABASE()) THEN
         ALTER TABLE zeitraum MODIFY ende DATETIME NOT NULL;
     END IF;
-END//
-DELIMITER ;
+END;
 
 CALL modify_columns_if_exist();
 DROP PROCEDURE IF EXISTS modify_columns_if_exist; 
