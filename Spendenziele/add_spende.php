@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $pdo->prepare("INSERT INTO spenden (benutzername, betrag, ziel) VALUES (?, ?, ?)");
         $stmt->execute([$benutzername, $betrag, $ziel]);
         
-        $stmt = $pdo->prepare("INSERT INTO ziele (name, gesamtbetrag) VALUES (?, ?) ON DUPLICATE KEY UPDATE gesamtbetrag = gesamtbetrag + ?");
+        $stmt = $pdo->prepare("INSERT INTO ziele (ziel, gesamtbetrag) VALUES (?, ?) ON DUPLICATE KEY UPDATE gesamtbetrag = gesamtbetrag + ?");
         $stmt->execute([$ziel, $betrag, $betrag]);
         
         $pdo->commit();
