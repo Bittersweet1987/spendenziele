@@ -439,18 +439,54 @@ function normalizeType($type) {
 // Funktion zum Ausführen der Struktur-Updates
 function applyStructureUpdates($pdo) {
     $results = [
+        'added' => [],
         'updated' => [],
+        'unchanged' => [],
         'errors' => []
     ];
 
     try {
-        // Füge die Spalte ziel hinzu
-        $pdo->exec("ALTER TABLE ziele ADD COLUMN ziel VARCHAR(100) NOT NULL UNIQUE AFTER id");
-        $results['updated'][] = "Spalte 'ziel' wurde hinzugefügt";
+        // Hole die SQL-Datei direkt aus dem Datenbank-Verzeichnis
+        $sqlFile = __DIR__ . '/../Datenbank/structure.sql';
+        if (!file_exists($sqlFile)) {
+            throw new Exception("SQL-Datei nicht gefunden: $sqlFile");
+        }
+
+        $sqlContent = file_get_contents($sqlFile);
+        if ($sqlContent === false) {
+            throw new Exception("Konnte SQL-Datei nicht lesen");
+        }
+
+        // Entferne Kommentare und leere Zeilen
+        $sqlContent = preg_replace('/--.*$/m', '', $sqlContent);
+        $sqlContent = preg_replace('/\/\*.*?\*\//s', '', $sqlContent);
         
-        // Kopiere die Daten
-        $pdo->exec("INSERT IGNORE INTO ziele (ziel) SELECT DISTINCT ziel FROM spenden");
-        $results['updated'][] = "Daten wurden kopiert";
+        // Teile die SQL-Befehle
+        $statements = array_values(array_filter(
+            explode(';', $sqlContent),
+            function($sql) { return trim($sql) !== ''; }
+        ));
+
+        // Führe jeden SQL-Befehl aus
+        foreach ($statements as $sql) {
+            try {
+                $pdo->exec($sql);
+                
+                if (stripos($sql, 'CREATE TABLE') !== false) {
+                    $results['added'][] = "Tabelle erstellt";
+                } else if (stripos($sql, 'ALTER TABLE') !== false) {
+                    $results['updated'][] = "Tabelle aktualisiert";
+                } else {
+                    $results['unchanged'][] = "SQL ausgeführt";
+                }
+            } catch (PDOException $e) {
+                // Ignoriere bestimmte Fehler
+                $code = $e->getCode();
+                if (!in_array($code, ['42S21', '42S22', '42000', '1060', '1061', '1091'])) {
+                    $results['errors'][] = $e->getMessage();
+                }
+            }
+        }
 
         return $results;
     } catch (Exception $e) {
