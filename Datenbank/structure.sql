@@ -65,6 +65,9 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+-- Warte kurz, um sicherzustellen, dass die Umbenennung abgeschlossen ist
+DO SLEEP(1);
+
 -- Anpassung der Spalten in der Tabelle 'ziele'
 ALTER TABLE `ziele` MODIFY COLUMN `gesamtbetrag` DECIMAL(10,2) NOT NULL DEFAULT 0.00;
 ALTER TABLE `ziele` MODIFY COLUMN `mindestbetrag` DECIMAL(10,2) DEFAULT NULL;
