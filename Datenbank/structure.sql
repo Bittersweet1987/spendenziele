@@ -90,9 +90,17 @@ BEGIN
     END IF;
 
     -- Ziele Tabelle
-    IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ziele' AND COLUMN_NAME = 'name' AND TABLE_SCHEMA = DATABASE()) THEN
-        ALTER TABLE `ziele` CHANGE `name` `ziel` VARCHAR(100) NOT NULL;
-    END IF;
+    SET @renameColumn = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_NAME = 'ziele' 
+        AND COLUMN_NAME = 'name' 
+        AND TABLE_SCHEMA = DATABASE());
+    SET @alterStmt = IF(@renameColumn > 0,
+        'ALTER TABLE `ziele` CHANGE `name` `ziel` VARCHAR(100) NOT NULL',
+        'SELECT "Spalte name existiert nicht"');
+    PREPARE stmt FROM @alterStmt;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+
     IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ziele' AND COLUMN_NAME = 'ziel' AND TABLE_SCHEMA = DATABASE()) THEN
         ALTER TABLE ziele MODIFY ziel VARCHAR(100) NOT NULL;
     END IF;
