@@ -51,21 +51,7 @@ CREATE TABLE IF NOT EXISTS zeitraum (
     ende DATETIME NOT NULL
 );
 
--- Lösche die Spalte 'ziel' falls sie existiert
-SET @columnExists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
-    WHERE TABLE_NAME = 'ziele' 
-    AND COLUMN_NAME = 'ziel' 
-    AND TABLE_SCHEMA = DATABASE());
-
-SET @sql = IF(@columnExists > 0, 
-    'ALTER TABLE `ziele` DROP COLUMN `ziel`',
-    'SELECT 1');
-
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-
--- Benenne die Spalte 'name' in 'ziel' um
+-- Benenne die Spalte 'name' in 'ziel' in der Tabelle 'ziele' um
 SET @columnExists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
     WHERE TABLE_NAME = 'ziele' 
     AND COLUMN_NAME = 'name' 
