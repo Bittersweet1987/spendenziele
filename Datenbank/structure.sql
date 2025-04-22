@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS spenden (
 -- Tabelle für Spendenziele
 CREATE TABLE IF NOT EXISTS ziele (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    ziel VARCHAR(100) NOT NULL,
+    name VARCHAR(100) NOT NULL UNIQUE,
     gesamtbetrag DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     mindestbetrag DECIMAL(10,2) DEFAULT NULL,
     abgeschlossen TINYINT(1) NOT NULL DEFAULT 0,
@@ -51,14 +51,28 @@ CREATE TABLE IF NOT EXISTS zeitraum (
     ende DATETIME NOT NULL
 );
 
--- Umbenennung der Spalte 'name' zu 'ziel' in der Tabelle 'ziele'
+-- Lösche die Spalte 'ziel' falls sie existiert
+SET @columnExists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_NAME = 'ziele' 
+    AND COLUMN_NAME = 'ziel' 
+    AND TABLE_SCHEMA = DATABASE());
+
+SET @sql = IF(@columnExists > 0, 
+    'ALTER TABLE `ziele` DROP COLUMN `ziel`',
+    'SELECT 1');
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Benenne die Spalte 'name' in 'ziel' um
 SET @columnExists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
     WHERE TABLE_NAME = 'ziele' 
     AND COLUMN_NAME = 'name' 
     AND TABLE_SCHEMA = DATABASE());
 
 SET @sql = IF(@columnExists > 0, 
-    'ALTER TABLE `ziele` CHANGE `name` `ziel` VARCHAR(100) NOT NULL',
+    'ALTER TABLE `ziele` CHANGE `name` `ziel` VARCHAR(100) NOT NULL UNIQUE',
     'SELECT 1');
 
 PREPARE stmt FROM @sql;
@@ -66,7 +80,6 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
 -- Anpassung der Spalten in der Tabelle 'ziele'
-ALTER TABLE `ziele` MODIFY COLUMN `ziel` VARCHAR(100) NOT NULL;
 ALTER TABLE `ziele` MODIFY COLUMN `gesamtbetrag` DECIMAL(10,2) NOT NULL DEFAULT 0.00;
 ALTER TABLE `ziele` MODIFY COLUMN `mindestbetrag` DECIMAL(10,2) DEFAULT NULL;
 ALTER TABLE `ziele` MODIFY COLUMN `abgeschlossen` TINYINT(1) NOT NULL DEFAULT 0;
