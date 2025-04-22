@@ -439,60 +439,149 @@ function normalizeType($type) {
 // Funktion zum Ausführen der Struktur-Updates
 function applyStructureUpdates($pdo) {
     $results = [
-        'added' => [],
-        'updated' => [],
-        'unchanged' => [],
+        'tables' => [
+            'added' => [],
+            'updated' => [],
+            'unchanged' => []
+        ],
+        'columns' => [
+            'added' => [],
+            'updated' => [],
+            'unchanged' => []
+        ],
         'errors' => []
     ];
-
+    
     try {
-        // Hole die SQL-Datei direkt aus dem Datenbank-Verzeichnis
-        $sqlFile = __DIR__ . '/../Datenbank/structure.sql';
-        if (!file_exists($sqlFile)) {
-            throw new Exception("SQL-Datei nicht gefunden: $sqlFile");
-        }
-
-        $sqlContent = file_get_contents($sqlFile);
-        if ($sqlContent === false) {
-            throw new Exception("Konnte SQL-Datei nicht lesen");
-        }
-
-        // Entferne Kommentare und leere Zeilen
-        $sqlContent = preg_replace('/--.*$/m', '', $sqlContent);
-        $sqlContent = preg_replace('/\/\*.*?\*\//s', '', $sqlContent);
+        debugLog("=== Start: Datenbankstruktur-Update ===");
         
-        // Teile die SQL-Befehle
-        $statements = array_values(array_filter(
-            explode(';', $sqlContent),
-            function($sql) { return trim($sql) !== ''; }
-        ));
-
-        // Führe jeden SQL-Befehl aus
-        foreach ($statements as $sql) {
-            try {
-                $pdo->exec($sql);
+        // Hole die aktuelle GitHub-Struktur
+        $url = 'https://raw.githubusercontent.com/Bittersweet1987/spendenziele/main/Datenbank/structure.sql';
+        $opts = [
+            'http' => [
+                'method' => 'GET',
+                'header' => [
+                    'User-Agent: PHP',
+                    'Accept: text/plain'
+                ]
+            ]
+        ];
+        $context = stream_context_create($opts);
+        debugLog("Lade SQL-Struktur von GitHub:", $url);
+        
+        $githubSQL = @file_get_contents($url, false, $context);
+        
+        if ($githubSQL === false) {
+            $error = error_get_last();
+            debugLog("Fehler beim Laden der SQL-Struktur:", $error);
+            throw new Exception("Konnte SQL-Datei nicht von GitHub laden: " . ($error['message'] ?? 'Unbekannter Fehler'));
+        }
+        
+        debugLog("SQL-Struktur geladen:", $githubSQL);
+        
+        // Führe die SQL-Anweisungen aus
+        $statements = array_filter(array_map('trim', explode(';', $githubSQL)));
+        debugLog("Gefundene SQL-Statements:", $statements);
+        
+        foreach ($statements as $statement) {
+            if (empty($statement)) continue;
+            
+            // Suche nach CREATE TABLE Statements
+            if (preg_match('/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?([^`\s]+)`?\s*\((.*)\)/is', $statement, $matches)) {
+                $tableName = trim($matches[1], '`');
+                $tableDefinition = $matches[2];
                 
-                if (stripos($sql, 'CREATE TABLE') !== false) {
-                    $results['added'][] = "Tabelle erstellt";
-                } else if (stripos($sql, 'ALTER TABLE') !== false) {
-                    $results['updated'][] = "Tabelle aktualisiert";
+                // Prüfe ob Tabelle existiert
+                $tableExists = $pdo->query("SHOW TABLES LIKE '$tableName'")->rowCount() > 0;
+                
+                if (!$tableExists) {
+                    // Erstelle neue Tabelle
+                    $pdo->exec($statement);
+                    $results['tables']['added'][] = $tableName;
                 } else {
-                    $results['unchanged'][] = "SQL ausgeführt";
-                }
-            } catch (PDOException $e) {
-                // Ignoriere bestimmte Fehler
-                $code = $e->getCode();
-                if (!in_array($code, ['42S21', '42S22', '42000', '1060', '1061', '1091'])) {
-                    $results['errors'][] = $e->getMessage();
+                    // Hole aktuelle Spalten
+                    $currentColumns = $pdo->query("SHOW COLUMNS FROM `$tableName`")->fetchAll(PDO::FETCH_ASSOC);
+                    $currentColumnNames = array_column($currentColumns, 'Field');
+                    
+                    // Parse neue Spalten
+                    $columnLines = array_map('trim', preg_split('/,(?![^(]*\))/', $tableDefinition));
+                    $newColumns = [];
+                    
+                    foreach ($columnLines as $line) {
+                        if (empty(trim($line))) continue;
+                        if (preg_match('/^`?([^`]+)`?\s+(.+)$/i', $line, $colMatch)) {
+                            $columnName = trim($colMatch[1], '`');
+                            $newColumns[$columnName] = $line;
+                        }
+                    }
+                    
+                    $hasChanges = false;
+                    
+                    // Prüfe auf neue oder geänderte Spalten
+                    foreach ($newColumns as $columnName => $definition) {
+                        if (!in_array($columnName, $currentColumnNames)) {
+                            // Neue Spalte
+                            try {
+                                $sql = "ALTER TABLE `$tableName` ADD COLUMN $definition";
+                                $pdo->exec($sql);
+                                $results['columns']['added'][] = "$tableName.$columnName";
+                                $hasChanges = true;
+                            } catch (PDOException $e) {
+                                // Ignoriere Duplikat-Fehler
+                                if ($e->getCode() !== '42S21') {
+                                    throw $e;
+                                }
+                                $results['columns']['unchanged'][] = "$tableName.$columnName";
+                            }
+                        } else {
+                            // Vergleiche Spaltendefinition
+                            $currentColumn = array_filter($currentColumns, function($col) use ($columnName) {
+                                return $col['Field'] === $columnName;
+                            });
+                            $currentColumn = reset($currentColumn);
+                            
+                            // Normalisiere Definitionen für Vergleich
+                            $normalizedCurrent = strtoupper(preg_replace('/\s+/', ' ', $currentColumn['Type'] . ' ' . 
+                                ($currentColumn['Null'] === 'NO' ? 'NOT NULL' : '') . ' ' .
+                                ($currentColumn['Default'] !== null ? 'DEFAULT ' . $currentColumn['Default'] : '') . ' ' .
+                                $currentColumn['Extra']));
+                            
+                            $normalizedNew = strtoupper(preg_replace('/\s+/', ' ', $definition));
+                            
+                            if ($normalizedCurrent !== $normalizedNew) {
+                                // Spalte aktualisieren
+                                try {
+                                    $sql = "ALTER TABLE `$tableName` MODIFY COLUMN $definition";
+                                    $pdo->exec($sql);
+                                    $results['columns']['updated'][] = "$tableName.$columnName";
+                                    $hasChanges = true;
+                                } catch (PDOException $e) {
+                                    // Ignoriere Duplikat-Fehler
+                                    if ($e->getCode() !== '42S21') {
+                                        throw $e;
+                                    }
+                                    $results['columns']['unchanged'][] = "$tableName.$columnName";
+                                }
+                            } else {
+                                $results['columns']['unchanged'][] = "$tableName.$columnName";
+                            }
+                        }
+                    }
+                    
+                    if ($hasChanges) {
+                        $results['tables']['updated'][] = $tableName;
+                    } else {
+                        $results['tables']['unchanged'][] = $tableName;
+                    }
                 }
             }
         }
-
-        return $results;
+        
     } catch (Exception $e) {
-        $results['errors'][] = $e->getMessage();
-        return $results;
+        $results['errors'][] = "Allgemeiner Fehler: " . $e->getMessage();
     }
+    
+    return $results;
 }
 
 // Funktion zum Aktualisieren der Dateien
@@ -1220,7 +1309,7 @@ if ($currentStep > 2 && !isset($_SESSION['step2_completed'])) {
 
         <?php elseif ($currentStep === 3): ?>
             <?php
-            // Aktualisiere die Commit-Informationen NUR in Schritt 3
+            // Aktualisiere die Commit-Informationen sofort
             if (isset($latestCommit['hash'])) {
                 // Schreibe die neue Version in die Datei
                 file_put_contents(__DIR__ . '/last_commit.txt', $latestCommit['hash']);
