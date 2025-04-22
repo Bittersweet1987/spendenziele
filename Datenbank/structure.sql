@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS zeitraum (
 
 -- Strukturanpassungen für bestehende Tabellen
 DROP PROCEDURE IF EXISTS modify_columns_if_exist;
+
 CREATE PROCEDURE modify_columns_if_exist()
 BEGIN
     -- Admin Tabelle
@@ -139,4 +140,5 @@ BEGIN
 END;
 
 CALL modify_columns_if_exist();
+
 DROP PROCEDURE IF EXISTS modify_columns_if_exist; 
