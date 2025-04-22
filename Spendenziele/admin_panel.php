@@ -105,12 +105,22 @@ $spenden = $stmtSpenden->fetchAll(PDO::FETCH_ASSOC);
 
 // Ziele + mindestbetrag laden
 try {
+    // Funktion zum Loggen
+    function debugLog($message) {
+        // In Datei schreiben
+        file_put_contents(__DIR__ . '/debug.log', date('Y-m-d H:i:s') . ' - ' . print_r($message, true) . "\n", FILE_APPEND);
+        // Für Browser-Konsole vorbereiten
+        echo "<script>console.log(" . json_encode($message) . ");</script>\n";
+    }
+
     // Debug: Tabellenstruktur anzeigen
     $columns = $pdo->query("SHOW COLUMNS FROM ziele");
-    error_log("=== Tabellenstruktur von 'ziele' ===");
+    debugLog("=== Tabellenstruktur von 'ziele' ===");
+    $columnInfo = [];
     while($column = $columns->fetch(PDO::FETCH_ASSOC)) {
-        error_log(print_r($column, true));
+        $columnInfo[] = $column;
     }
+    debugLog($columnInfo);
     
     // Daten abrufen
     $stmtziele = $pdo->query("SELECT * FROM ziele ORDER BY gesamtbetrag DESC");
@@ -118,13 +128,13 @@ try {
     
     // Debug: Erste Zeile der Daten anzeigen
     if (!empty($ziele)) {
-        error_log("=== Erste Zeile der Ziele-Daten ===");
-        error_log(print_r($ziele[0], true));
+        debugLog("=== Erste Zeile der Ziele-Daten ===");
+        debugLog($ziele[0]);
     } else {
-        error_log("Keine Ziele in der Datenbank gefunden!");
+        debugLog("Keine Ziele in der Datenbank gefunden!");
     }
 } catch (PDOException $e) {
-    error_log("Datenbankfehler: " . $e->getMessage());
+    debugLog("Datenbankfehler: " . $e->getMessage());
 }
 
 // Debug-Ausgabe
