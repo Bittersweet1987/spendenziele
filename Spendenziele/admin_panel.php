@@ -104,42 +104,8 @@ $stmtSpenden = $pdo->query("SELECT id, benutzername, betrag, ziel, datum FROM sp
 $spenden = $stmtSpenden->fetchAll(PDO::FETCH_ASSOC);
 
 // Ziele + mindestbetrag laden
-try {
-    // Funktion zum Loggen
-    function debugLog($message) {
-        $log = date('Y-m-d H:i:s') . ' - ' . (is_array($message) ? json_encode($message, JSON_PRETTY_PRINT) : $message) . "\n";
-        file_put_contents(__DIR__ . '/debug.log', $log, FILE_APPEND);
-        echo "<script>console.log(" . json_encode($message) . ");</script>\n";
-    }
-
-    // Debug: Spaltennamen der Tabelle ziele
-    $columns = $pdo->query("SHOW COLUMNS FROM ziele");
-    debugLog("=== SPALTENNAMEN DER TABELLE 'ziele' ===");
-    $columnNames = [];
-    while($column = $columns->fetch(PDO::FETCH_ASSOC)) {
-        $columnNames[] = $column['Field'] . ' (' . $column['Type'] . ')';
-    }
-    debugLog($columnNames);
-    
-    // Beispieldatensatz anzeigen
-    $stmtziele = $pdo->query("SELECT * FROM ziele LIMIT 1");
-    $beispiel = $stmtziele->fetch(PDO::FETCH_ASSOC);
-    if ($beispiel) {
-        debugLog("=== BEISPIELDATENSATZ AUS 'ziele' ===");
-        debugLog($beispiel);
-    }
-    
-    // Alle Ziele abrufen
-    $stmtziele = $pdo->query("SELECT * FROM ziele ORDER BY gesamtbetrag DESC");
-    $ziele = $stmtziele->fetchAll(PDO::FETCH_ASSOC);
-    
-} catch (PDOException $e) {
-    debugLog("Datenbankfehler: " . $e->getMessage());
-}
-
-// Debug-Ausgabe
-error_log("Ziele aus der Datenbank:");
-error_log(print_r($ziele, true));
+$stmtziele = $pdo->query("SELECT id, ziel, gesamtbetrag, mindestbetrag, abgeschlossen, sichtbar FROM ziele ORDER BY gesamtbetrag DESC");
+$ziele = $stmtziele->fetchAll(PDO::FETCH_ASSOC);
 
 // Verarbeite Update-Commit wenn vorhanden
 if (isset($_POST['update_commit'])) {
@@ -442,7 +408,7 @@ if (isset($_POST['update_commit'])) {
             <?php if ($ziele): ?>
                 <?php foreach ($ziele as $goal):
                     $cid = $goal['id'];
-                    $zielname = htmlspecialchars($goal['ziel']);
+                    $cname = htmlspecialchars($goal['ziel']);
                     $cges = htmlspecialchars($goal['gesamtbetrag']);
                     $mindestbetrag = $goal['mindestbetrag'];
                     $sichtbar = isset($goal['sichtbar']) ? $goal['sichtbar'] : 0;
@@ -477,7 +443,7 @@ if (isset($_POST['update_commit'])) {
                         : "";
                 ?>
                 <tr>
-                    <td><?= $zielname ?></td>
+                    <td><?= $cname ?></td>
                     <td><?= $cges ?> €</td>
                     <td><?= $mbString ?></td>
                     <td><?= $status ?></td>
@@ -841,6 +807,9 @@ if (isset($_POST['update_commit'])) {
                     </tr>`;
 
                 data.forEach(goal => {
+                    const cid = goal.id;
+                    const cname = goal.ziel;
+                    const cges = goal.gesamtbetrag;
                     const mindestbetrag = goal.mindestbetrag;
                     const sichtbar = parseInt(goal.sichtbar) === 1;
                     const abgeschlossen = parseInt(goal.abgeschlossen) === 1;
@@ -857,25 +826,25 @@ if (isset($_POST['update_commit'])) {
                     let status;
                     if (abgeschlossen) {
                         status = "✅ Abgeschlossen";
-                    } else if (mindestbetrag !== null && parseFloat(goal.gesamtbetrag) >= parseFloat(mindestbetrag)) {
+                    } else if (mindestbetrag !== null && parseFloat(cges) >= parseFloat(mindestbetrag)) {
                         status = "✔️ Erreicht";
                     } else {
                         status = "❌ Noch offen";
                     }
 
-                    const sichtbarBtn = `<button class='${sichtbar ? "visible-btn" : "hidden-btn"}' onclick='toggleZielSichtbarkeit(${goal.id})'>${sichtbar ? "Verstecken" : "Anzeigen"}</button>`;
-                    const actionButton = (mindestbetrag !== null && parseFloat(goal.gesamtbetrag) >= parseFloat(mindestbetrag) && !abgeschlossen) 
-                        ? `<button class='complete-btn' onclick='markAsCompleted(${goal.id})'>Als erledigt markieren</button>` 
+                    const sichtbarBtn = `<button class='${sichtbar ? "visible-btn" : "hidden-btn"}' onclick='toggleZielSichtbarkeit(${cid})'>${sichtbar ? "Verstecken" : "Anzeigen"}</button>`;
+                    const actionButton = (mindestbetrag !== null && parseFloat(cges) >= parseFloat(mindestbetrag) && !abgeschlossen) 
+                        ? `<button class='complete-btn' onclick='markAsCompleted(${cid})'>Als erledigt markieren</button>` 
                         : "";
                     const minSetzenButton = !abgeschlossen 
-                        ? `<button class='btn btn-yellow' onclick='setMindestbetrag(${goal.id}, "${mindestbetrag}")'>Min setzen</button>` 
+                        ? `<button class='btn btn-yellow' onclick='setMindestbetrag(${cid}, "${mindestbetrag}")'>Min setzen</button>` 
                         : "";
-                    const deleteButton = `<button class='btn btn-red' onclick='deleteZiel(${goal.id}, "${goal.ziel}")'>Löschen</button>`;
+                    const deleteButton = `<button class='btn btn-red' onclick='deleteZiel(${cid}, "${cname}")'>Löschen</button>`;
 
                     newTable += `
                         <tr>
-                            <td>${goal.ziel}</td>
-                            <td>${goal.gesamtbetrag} €</td>
+                            <td>${cname}</td>
+                            <td>${cges} €</td>
                             <td>${mbString}</td>
                             <td>${status}</td>
                             <td>${minSetzenButton} ${actionButton} ${sichtbarBtn} ${deleteButton}</td>
