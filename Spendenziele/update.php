@@ -446,79 +446,27 @@ function applyStructureUpdates($pdo) {
     ];
 
     try {
-        // Setze PDO-Attribute für MySQL
-        $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, true);
-        $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, true);
-        
-        // 1. Prüfe und stelle die Spalte 'ziel' wieder her
-        try {
-            // Prüfe ob die Spalte existiert
-            $checkColumn = $pdo->query("SHOW COLUMNS FROM ziele LIKE 'ziel'")->fetchAll(PDO::FETCH_ASSOC);
+        // Prüfe ob die Spalte existiert
+        $stmt = $pdo->query("SHOW COLUMNS FROM ziele LIKE 'ziel'");
+        $columnExists = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stmt->closeCursor();
+
+        if (!$columnExists) {
+            // Füge die Spalte hinzu
+            $pdo->exec("ALTER TABLE ziele ADD COLUMN ziel VARCHAR(100) NOT NULL UNIQUE AFTER id");
             
-            if (empty($checkColumn)) {
-                // Spalte existiert nicht, füge sie hinzu
-                $pdo->exec("ALTER TABLE ziele ADD COLUMN ziel VARCHAR(100) NOT NULL UNIQUE AFTER id");
-                $results['updated'][] = "Spalte 'ziel' hinzugefügt";
-                
-                // Stelle die Daten aus der spenden-Tabelle wieder her
-                $pdo->exec("INSERT IGNORE INTO ziele (ziel) SELECT DISTINCT ziel FROM spenden WHERE ziel NOT IN (SELECT ziel FROM ziele)");
-                $results['updated'][] = "Daten für Spalte 'ziel' wiederhergestellt";
-            }
-        } catch (PDOException $e) {
-            $results['errors'][] = [
-                'sql' => 'Spalte ziel wiederherstellen',
-                'error' => $e->getMessage()
-            ];
-        }
-        
-        // 2. Führe die restlichen SQL-Befehle aus
-        $sqlContent = file_get_contents('https://raw.githubusercontent.com/Bittersweet1987/spendenziele/main/Datenbank/structure.sql');
-        if ($sqlContent === false) {
-            throw new Exception("Konnte SQL-Struktur nicht von GitHub laden");
-        }
-
-        // Entferne Kommentare und leere Zeilen
-        $sqlContent = preg_replace('/--.*$/m', '', $sqlContent);
-        $sqlContent = preg_replace('/\/\*.*?\*\//s', '', $sqlContent);
-        $sqlContent = preg_replace('/^\s*$/m', '', $sqlContent);
-
-        // Teile die SQL-Befehle
-        $sqlStatements = array_filter(explode(';', $sqlContent));
-
-        // Führe jeden SQL-Befehl aus
-        foreach ($sqlStatements as $sql) {
-            $sql = trim($sql);
-            if (empty($sql)) continue;
-
-            try {
-                // Führe den Befehl aus
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute();
-                
-                // Prüfe, ob es sich um eine ALTER TABLE-Anweisung handelt
-                if (stripos($sql, 'ALTER TABLE') !== false) {
-                    $results['updated'][] = $sql;
-                } else if (stripos($sql, 'CREATE TABLE') !== false) {
-                    $results['added'][] = $sql;
-                } else {
-                    $results['unchanged'][] = $sql;
-                }
-            } catch (PDOException $e) {
-                // Ignoriere bekannte Fehler
-                $errorCode = $e->getCode();
-                if (!in_array($errorCode, ['42S21', '42S22', '42000', '1064'])) {
-                    $results['errors'][] = [
-                        'sql' => $sql,
-                        'error' => $e->getMessage()
-                    ];
-                }
-            }
+            // Stelle die Daten aus der spenden-Tabelle wieder her
+            $pdo->exec("INSERT IGNORE INTO ziele (ziel) SELECT DISTINCT ziel FROM spenden");
+            
+            $results['updated'][] = "Spalte 'ziel' wurde wiederhergestellt und mit Daten befüllt";
+        } else {
+            $results['unchanged'][] = "Spalte 'ziel' existiert bereits";
         }
 
         return $results;
     } catch (Exception $e) {
         $results['errors'][] = [
-            'sql' => 'Allgemein',
+            'sql' => 'Spalte ziel wiederherstellen',
             'error' => $e->getMessage()
         ];
         return $results;
