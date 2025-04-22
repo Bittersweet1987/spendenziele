@@ -486,6 +486,8 @@ function applyStructureUpdates($pdo) {
         foreach ($statements as $statement) {
             if (empty($statement)) continue;
             
+            debugLog("Verarbeite Statement:", $statement);
+            
             // Suche nach CREATE TABLE Statements
             if (preg_match('/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?([^`\s]+)`?\s*\((.*)\)/is', $statement, $matches)) {
                 $tableName = trim($matches[1], '`');
@@ -572,6 +574,26 @@ function applyStructureUpdates($pdo) {
                         $results['tables']['updated'][] = $tableName;
                     } else {
                         $results['tables']['unchanged'][] = $tableName;
+                    }
+                }
+            }
+            // Suche nach ALTER TABLE Statements
+            else if (preg_match('/ALTER\s+TABLE\s+`?([^`\s]+)`?\s+(.+)/is', $statement, $matches)) {
+                $tableName = trim($matches[1], '`');
+                $alterDefinition = $matches[2];
+                
+                debugLog("Gefundenes ALTER TABLE Statement für Tabelle $tableName:", $alterDefinition);
+                
+                try {
+                    // Führe das ALTER TABLE Statement aus
+                    $pdo->exec($statement);
+                    $results['tables']['updated'][] = $tableName . " (ALTER)";
+                    debugLog("ALTER TABLE erfolgreich ausgeführt für $tableName");
+                } catch (PDOException $e) {
+                    debugLog("Fehler beim Ausführen von ALTER TABLE für $tableName:", $e->getMessage());
+                    // Ignoriere bestimmte Fehler (z.B. wenn die Spalte bereits existiert)
+                    if (!in_array($e->getCode(), ['42S21', '42S22'])) {
+                        throw $e;
                     }
                 }
             }
