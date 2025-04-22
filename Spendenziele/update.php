@@ -455,29 +455,6 @@ function applyStructureUpdates($pdo) {
     try {
         debugLog("=== Start: Datenbankstruktur-Update ===");
         
-        // Prüfe und führe die Umbenennung von name zu ziel durch
-        debugLog("Prüfe auf Spalte 'name' in Tabelle 'ziele'");
-        $checkName = $pdo->query("SELECT COUNT(*) as count FROM INFORMATION_SCHEMA.COLUMNS 
-            WHERE TABLE_NAME = 'ziele' 
-            AND COLUMN_NAME = 'name' 
-            AND TABLE_SCHEMA = DATABASE()")->fetch(PDO::FETCH_ASSOC);
-            
-        if ($checkName['count'] > 0) {
-            debugLog("Spalte 'name' gefunden, führe Umbenennung durch");
-            try {
-                $pdo->exec("ALTER TABLE `ziele` CHANGE `name` `ziel` VARCHAR(100) NOT NULL");
-                debugLog("Umbenennung erfolgreich durchgeführt");
-                $results['columns']['updated'][] = "ziele.name -> ziele.ziel";
-            } catch (PDOException $e) {
-                debugLog("Fehler bei der Umbenennung: " . $e->getMessage());
-                if (!in_array($e->getCode(), ['42S21', '42S22'])) {
-                    throw $e;
-                }
-            }
-        } else {
-            debugLog("Spalte 'name' nicht gefunden, überspringe Umbenennung");
-        }
-        
         // Hole die aktuelle GitHub-Struktur
         $url = 'https://raw.githubusercontent.com/Bittersweet1987/spendenziele/main/Datenbank/structure.sql';
         $opts = [

@@ -52,7 +52,18 @@ CREATE TABLE IF NOT EXISTS zeitraum (
 );
 
 -- Umbenennung der Spalte 'name' zu 'ziel' in der Tabelle 'ziele'
-ALTER TABLE `ziele` CHANGE COLUMN `name` `ziel` VARCHAR(100) NOT NULL;
+SET @columnExists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_NAME = 'ziele' 
+    AND COLUMN_NAME = 'name' 
+    AND TABLE_SCHEMA = DATABASE());
+
+SET @sql = IF(@columnExists > 0, 
+    'ALTER TABLE `ziele` CHANGE `name` `ziel` VARCHAR(100) NOT NULL',
+    'SELECT 1');
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- Anpassung der Spalten in der Tabelle 'ziele'
 ALTER TABLE `ziele` MODIFY COLUMN `ziel` VARCHAR(100) NOT NULL;
