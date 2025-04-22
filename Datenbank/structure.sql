@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS spenden (
 -- Tabelle für Spendenziele
 CREATE TABLE IF NOT EXISTS ziele (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    ziel VARCHAR(100) NOT NULL UNIQUE,
+    ziel VARCHAR(100) NOT NULL,
     gesamtbetrag DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     mindestbetrag DECIMAL(10,2) DEFAULT NULL,
     abgeschlossen TINYINT(1) NOT NULL DEFAULT 0,
@@ -127,4 +127,7 @@ JOIN (
 SET z.`gesamtbetrag` = s.`gesamtbetrag`;
 
 -- Lösche leere Einträge
-DELETE FROM `ziele` WHERE `ziel` = '' OR `ziel` IS NULL; 
+DELETE FROM `ziele` WHERE `ziel` = '' OR `ziel` IS NULL;
+
+-- Füge UNIQUE-Constraint hinzu, nachdem die Daten bereinigt wurden
+ALTER TABLE `ziele` ADD UNIQUE INDEX `ziel_unique` (`ziel`); 
