@@ -51,21 +51,8 @@ CREATE TABLE IF NOT EXISTS zeitraum (
     ende DATETIME NOT NULL
 );
 
--- Strukturanpassungen für bestehende Tabellen
-
 -- Umbenennung der Spalte 'name' zu 'ziel' in der Tabelle 'ziele'
-SET @column_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
-    WHERE TABLE_NAME = 'ziele' 
-    AND COLUMN_NAME = 'name' 
-    AND TABLE_SCHEMA = DATABASE());
-
-SET @sql = IF(@column_exists > 0, 
-    'ALTER TABLE `ziele` CHANGE `name` `ziel` VARCHAR(100) NOT NULL',
-    'SELECT 1');
-
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
+ALTER TABLE `ziele` CHANGE COLUMN `name` `ziel` VARCHAR(100) NOT NULL;
 
 -- Anpassung der Spalten in der Tabelle 'ziele'
 ALTER TABLE `ziele` MODIFY COLUMN `ziel` VARCHAR(100) NOT NULL;
