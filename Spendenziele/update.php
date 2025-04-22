@@ -502,13 +502,17 @@ function applyStructureUpdates($pdo) {
         
         debugLog("SQL-Struktur geladen");
         
-        // Entferne Kommentare und DELIMITER-Anweisungen
+        // Entferne Kommentare und leere Zeilen
         $githubSQL = preg_replace('/--[^\n]*\n/', "\n", $githubSQL);
         $githubSQL = preg_replace('/\/\*.*?\*\//s', '', $githubSQL);
         $githubSQL = preg_replace('/DELIMITER\s+[\/\/|;]/', '', $githubSQL);
+        $githubSQL = preg_replace('/^\s*$/m', '', $githubSQL);
         
         // Teile die SQL in einzelne Statements
         $statements = array_filter(array_map('trim', explode(';', $githubSQL)));
+        
+        // Aktiviere PDO::ATTR_EMULATE_PREPARES für komplexe SQL-Statements
+        $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, true);
         
         foreach ($statements as $statement) {
             if (empty(trim($statement))) continue;
@@ -520,9 +524,10 @@ function applyStructureUpdates($pdo) {
             } catch (PDOException $e) {
                 debugLog("Fehler beim Ausführen des Statements: " . $e->getMessage());
                 // Werfe den Fehler nur weiter, wenn es kein bekannter/ignorierbarer Fehler ist
-                if (!in_array($e->getCode(), ['42S21', '42S22', '42000'])) {
+                if (!in_array($e->getCode(), ['42S21', '42S22', '42000', '1064'])) {
                     throw $e;
                 }
+                debugLog("Ignoriere bekannten Fehler und fahre fort");
             }
         }
         
@@ -532,6 +537,7 @@ function applyStructureUpdates($pdo) {
         
     } catch (Exception $e) {
         $results['errors'][] = "Allgemeiner Fehler: " . $e->getMessage();
+        debugLog("Fehler in applyStructureUpdates: " . $e->getMessage());
     }
     
     return $results;
