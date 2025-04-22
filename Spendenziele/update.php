@@ -483,10 +483,38 @@ function applyStructureUpdates($pdo) {
         $statements = array_filter(array_map('trim', explode(';', $githubSQL)));
         debugLog("Gefundene SQL-Statements:", $statements);
         
+        // Führe die Statements als Batch aus
+        try {
+            debugLog("Führe SQL-Statements als Batch aus");
+            $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, true);
+            foreach ($statements as $statement) {
+                if (empty(trim($statement))) continue;
+                
+                debugLog("Führe aus:", $statement);
+                try {
+                    $pdo->exec($statement);
+                    debugLog("Statement erfolgreich ausgeführt");
+                } catch (PDOException $e) {
+                    debugLog("Fehler beim Ausführen des Statements: " . $e->getMessage());
+                    // Werfe den Fehler nur weiter, wenn es kein bekannter/ignorierbarer Fehler ist
+                    if (!in_array($e->getCode(), ['42S21', '42S22', '42000'])) {
+                        throw $e;
+                    }
+                }
+            }
+            
+            // Hole die aktuelle Tabellenstruktur zur Überprüfung
+            $columns = $pdo->query("SHOW COLUMNS FROM ziele")->fetchAll(PDO::FETCH_ASSOC);
+            debugLog("Aktuelle Spalten der Tabelle ziele:", $columns);
+            
+        } catch (Exception $e) {
+            debugLog("Schwerwiegender Fehler beim Ausführen der SQL-Statements: " . $e->getMessage());
+            throw $e;
+        }
+        
+        // Jetzt die regulären CREATE/ALTER Statements verarbeiten
         foreach ($statements as $statement) {
             if (empty($statement)) continue;
-            
-            debugLog("Verarbeite Statement:", $statement);
             
             // Suche nach CREATE TABLE Statements
             if (preg_match('/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?([^`\s]+)`?\s*\((.*)\)/is', $statement, $matches)) {
