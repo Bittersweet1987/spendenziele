@@ -500,20 +500,28 @@ function applyStructureUpdates($pdo) {
             throw new Exception("Konnte SQL-Datei nicht von GitHub laden: " . ($error['message'] ?? 'Unbekannter Fehler'));
         }
         
-        debugLog("SQL-Struktur geladen:", $githubSQL);
+        debugLog("SQL-Struktur geladen");
         
-        // Führe die SQL-Anweisungen aus
-        $statements = array_filter(array_map('trim', explode(';', $githubSQL)));
-        debugLog("Gefundene SQL-Statements:", $statements);
+        // Entferne Kommentare
+        $githubSQL = preg_replace('/--[^\n]*\n/', "\n", $githubSQL);
+        $githubSQL = preg_replace('/\/\*.*?\*\//s', '', $githubSQL);
         
-        // Führe die Statements als Batch aus
-        try {
-            debugLog("Führe SQL-Statements als Batch aus");
-            $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, true);
+        // Teile die SQL in Blöcke auf
+        $sqlBlocks = preg_split('/DELIMITER\s+[\/\/|;]/', $githubSQL);
+        
+        foreach ($sqlBlocks as $block) {
+            if (empty(trim($block))) continue;
+            
+            // Teile den Block in einzelne Statements
+            $statements = array_filter(array_map('trim', explode(';', $block)));
+            
             foreach ($statements as $statement) {
                 if (empty(trim($statement))) continue;
                 
-                debugLog("Führe aus:", $statement);
+                // Überspringe DELIMITER Anweisungen
+                if (stripos($statement, 'DELIMITER') === 0) continue;
+                
+                debugLog("Führe Statement aus:", $statement);
                 try {
                     $pdo->exec($statement);
                     debugLog("Statement erfolgreich ausgeführt");
@@ -525,130 +533,11 @@ function applyStructureUpdates($pdo) {
                     }
                 }
             }
-            
-            // Hole die aktuelle Tabellenstruktur zur Überprüfung
-            $columns = $pdo->query("SHOW COLUMNS FROM ziele")->fetchAll(PDO::FETCH_ASSOC);
-            debugLog("Aktuelle Spalten der Tabelle ziele:", $columns);
-            
-        } catch (Exception $e) {
-            debugLog("Schwerwiegender Fehler beim Ausführen der SQL-Statements: " . $e->getMessage());
-            throw $e;
         }
         
-        // Jetzt die regulären CREATE/ALTER Statements verarbeiten
-        foreach ($statements as $statement) {
-            if (empty($statement)) continue;
-            
-            // Suche nach CREATE TABLE Statements
-            if (preg_match('/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?([^`\s]+)`?\s*\((.*)\)/is', $statement, $matches)) {
-                $tableName = trim($matches[1], '`');
-                $tableDefinition = $matches[2];
-                
-                // Prüfe ob Tabelle existiert
-                $tableExists = $pdo->query("SHOW TABLES LIKE '$tableName'")->rowCount() > 0;
-                
-                if (!$tableExists) {
-                    // Erstelle neue Tabelle
-                    $pdo->exec($statement);
-                    $results['tables']['added'][] = $tableName;
-                } else {
-                    // Hole aktuelle Spalten
-                    $currentColumns = $pdo->query("SHOW COLUMNS FROM `$tableName`")->fetchAll(PDO::FETCH_ASSOC);
-                    $currentColumnNames = array_column($currentColumns, 'Field');
-                    
-                    // Parse neue Spalten
-                    $columnLines = array_map('trim', preg_split('/,(?![^(]*\))/', $tableDefinition));
-                    $newColumns = [];
-                    
-                    foreach ($columnLines as $line) {
-                        if (empty(trim($line))) continue;
-                        if (preg_match('/^`?([^`]+)`?\s+(.+)$/i', $line, $colMatch)) {
-                            $columnName = trim($colMatch[1], '`');
-                            $newColumns[$columnName] = $line;
-                        }
-                    }
-                    
-                    $hasChanges = false;
-                    
-                    // Prüfe auf neue oder geänderte Spalten
-                    foreach ($newColumns as $columnName => $definition) {
-                        if (!in_array($columnName, $currentColumnNames)) {
-                            // Neue Spalte
-                            try {
-                                $sql = "ALTER TABLE `$tableName` ADD COLUMN $definition";
-                                $pdo->exec($sql);
-                                $results['columns']['added'][] = "$tableName.$columnName";
-                                $hasChanges = true;
-                            } catch (PDOException $e) {
-                                // Ignoriere Duplikat-Fehler
-                                if ($e->getCode() !== '42S21') {
-                                    throw $e;
-                                }
-                                $results['columns']['unchanged'][] = "$tableName.$columnName";
-                            }
-                        } else {
-                            // Vergleiche Spaltendefinition
-                            $currentColumn = array_filter($currentColumns, function($col) use ($columnName) {
-                                return $col['Field'] === $columnName;
-                            });
-                            $currentColumn = reset($currentColumn);
-                            
-                            // Normalisiere Definitionen für Vergleich
-                            $normalizedCurrent = strtoupper(preg_replace('/\s+/', ' ', $currentColumn['Type'] . ' ' . 
-                                ($currentColumn['Null'] === 'NO' ? 'NOT NULL' : '') . ' ' .
-                                ($currentColumn['Default'] !== null ? 'DEFAULT ' . $currentColumn['Default'] : '') . ' ' .
-                                $currentColumn['Extra']));
-                            
-                            $normalizedNew = strtoupper(preg_replace('/\s+/', ' ', $definition));
-                            
-                            if ($normalizedCurrent !== $normalizedNew) {
-                                // Spalte aktualisieren
-                                try {
-                                    $sql = "ALTER TABLE `$tableName` MODIFY COLUMN $definition";
-                                    $pdo->exec($sql);
-                                    $results['columns']['updated'][] = "$tableName.$columnName";
-                                    $hasChanges = true;
-                                } catch (PDOException $e) {
-                                    // Ignoriere Duplikat-Fehler
-                                    if ($e->getCode() !== '42S21') {
-                                        throw $e;
-                                    }
-                                    $results['columns']['unchanged'][] = "$tableName.$columnName";
-                                }
-                            } else {
-                                $results['columns']['unchanged'][] = "$tableName.$columnName";
-                            }
-                        }
-                    }
-                    
-                    if ($hasChanges) {
-                        $results['tables']['updated'][] = $tableName;
-                    } else {
-                        $results['tables']['unchanged'][] = $tableName;
-                    }
-                }
-            }
-            // Suche nach ALTER TABLE Statements
-            else if (preg_match('/ALTER\s+TABLE\s+`?([^`\s]+)`?\s+(.+)/is', $statement, $matches)) {
-                $tableName = trim($matches[1], '`');
-                $alterDefinition = $matches[2];
-                
-                debugLog("Gefundenes ALTER TABLE Statement für Tabelle $tableName:", $alterDefinition);
-                
-                try {
-                    // Führe das ALTER TABLE Statement aus
-                    $pdo->exec($statement);
-                    $results['tables']['updated'][] = $tableName . " (ALTER)";
-                    debugLog("ALTER TABLE erfolgreich ausgeführt für $tableName");
-                } catch (PDOException $e) {
-                    debugLog("Fehler beim Ausführen von ALTER TABLE für $tableName:", $e->getMessage());
-                    // Ignoriere bestimmte Fehler (z.B. wenn die Spalte bereits existiert)
-                    if (!in_array($e->getCode(), ['42S21', '42S22'])) {
-                        throw $e;
-                    }
-                }
-            }
-        }
+        // Hole die aktuelle Tabellenstruktur zur Überprüfung
+        $columns = $pdo->query("SHOW COLUMNS FROM ziele")->fetchAll(PDO::FETCH_ASSOC);
+        debugLog("Aktuelle Spalten der Tabelle ziele:", $columns);
         
     } catch (Exception $e) {
         $results['errors'][] = "Allgemeiner Fehler: " . $e->getMessage();
