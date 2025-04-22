@@ -1,5 +1,9 @@
 <?php
-require_once 'config.php';
+// Direkte Verbindungseinstellungen für Testzwecke
+$db_host = 'localhost';  // Oder die IP-Adresse des Datenbankservers
+$db_name = 'spendenziele';  // Name der Datenbank
+$db_user = 'root';  // Datenbankbenutzer
+$db_pass = '';  // Datenbankpasswort
 
 // Funktion zum Formatieren der Spalteninformationen
 function formatColumnInfo($column) {
@@ -25,7 +29,7 @@ function formatColumnInfo($column) {
 
 try {
     // Verbindung zur Datenbank herstellen
-    $db = new PDO("mysql:host=" . DB_HOST . ";dbname=" . DB_NAME, DB_USER, DB_PASS);
+    $db = new PDO("mysql:host=$db_host;dbname=$db_name", $db_user, $db_pass);
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     
     // Hole alle Tabellen
@@ -88,6 +92,14 @@ try {
             .not-null {
                 font-weight: bold;
             }
+            .error {
+                color: red;
+                padding: 10px;
+                margin: 10px 0;
+                border: 1px solid red;
+                border-radius: 4px;
+                background-color: #ffebee;
+            }
         </style>
     </head>
     <body>
@@ -123,6 +135,10 @@ try {
     echo "</div></body></html>";
     
 } catch (PDOException $e) {
-    echo "Fehler: " . $e->getMessage();
+    echo "<div class='error'>Fehler bei der Datenbankverbindung: " . $e->getMessage() . "</div>";
+    echo "<div class='error'>Verbindungsparameter:<br>
+          Host: $db_host<br>
+          Datenbank: $db_name<br>
+          Benutzer: $db_user</div>";
 }
 ?> 
