@@ -437,64 +437,87 @@ function normalizeType($type) {
 }
 
 // Funktion zum Ausführen der Struktur-Updates
-function applyStructureUpdates($db) {
+function applyStructureUpdates($pdo) {
     $results = [
-        'added' => [],
-        'updated' => [],
-        'unchanged' => [],
+        'tables' => [
+            'added' => [],
+            'updated' => [],
+            'unchanged' => []
+        ],
+        'columns' => [
+            'added' => [],
+            'updated' => [],
+            'unchanged' => []
+        ],
         'errors' => []
     ];
-
+    
     try {
-        // Aktiviere gepufferte Abfragen
-        $db->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, true);
+        debugLog("=== Start: Datenbankstruktur-Update ===");
         
-        // Hole die aktuelle SQL-Struktur von GitHub
-        $sqlContent = file_get_contents('https://raw.githubusercontent.com/Bittersweet1987/spendenziele/main/Datenbank/structure.sql');
-        if ($sqlContent === false) {
-            throw new Exception('Konnte SQL-Struktur nicht von GitHub laden');
+        // Hole die aktuelle GitHub-Struktur
+        $url = 'https://raw.githubusercontent.com/Bittersweet1987/spendenziele/main/Datenbank/structure.sql';
+        $opts = [
+            'http' => [
+                'method' => 'GET',
+                'header' => [
+                    'User-Agent: PHP',
+                    'Accept: text/plain'
+                ]
+            ]
+        ];
+        $context = stream_context_create($opts);
+        debugLog("Lade SQL-Struktur von GitHub:", $url);
+        
+        $githubSQL = @file_get_contents($url, false, $context);
+        
+        if ($githubSQL === false) {
+            $error = error_get_last();
+            debugLog("Fehler beim Laden der SQL-Struktur:", $error);
+            throw new Exception("Konnte SQL-Datei nicht von GitHub laden: " . ($error['message'] ?? 'Unbekannter Fehler'));
         }
-
+        
+        debugLog("SQL-Struktur geladen");
+        
         // Entferne Kommentare und leere Zeilen
-        $sqlContent = preg_replace('/--.*$/m', '', $sqlContent);
-        $sqlContent = preg_replace('/^\s*$/m', '', $sqlContent);
-
-        // Teile die SQL-Statements auf
-        $statements = array_filter(explode(';', $sqlContent), 'strlen');
-
-        // Führe jedes Statement aus
+        $githubSQL = preg_replace('/--[^\n]*\n/', "\n", $githubSQL);
+        $githubSQL = preg_replace('/\/\*.*?\*\//s', '', $githubSQL);
+        $githubSQL = preg_replace('/DELIMITER\s+[\/\/|;]/', '', $githubSQL);
+        $githubSQL = preg_replace('/^\s*$/m', '', $githubSQL);
+        
+        // Teile die SQL in einzelne Statements
+        $statements = array_filter(array_map('trim', explode(';', $githubSQL)));
+        
+        // Aktiviere PDO::ATTR_EMULATE_PREPARES für komplexe SQL-Statements
+        $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, true);
+        
         foreach ($statements as $statement) {
-            $statement = trim($statement);
-            if (empty($statement)) continue;
-
+            if (empty(trim($statement))) continue;
+            
+            debugLog("Führe Statement aus:", $statement);
             try {
-                // Führe das Statement aus
-                $stmt = $db->prepare($statement);
-                $stmt->execute();
-                
-                // Hole das Ergebnis, um den Puffer zu leeren
-                if ($stmt->columnCount() > 0) {
-                    $stmt->fetchAll(PDO::FETCH_ASSOC);
-                }
-                
-                // Logge erfolgreiche Ausführung
-                debugLog("SQL Statement erfolgreich ausgeführt: " . substr($statement, 0, 100) . "...");
+                $pdo->exec($statement);
+                debugLog("Statement erfolgreich ausgeführt");
             } catch (PDOException $e) {
-                // Ignoriere bekannte Fehler
-                if (in_array($e->getCode(), ['42S21', '42S22', '42000', '1064'])) {
-                    debugLog("SQL Fehler ignoriert: " . $e->getMessage());
-                    continue;
+                debugLog("Fehler beim Ausführen des Statements: " . $e->getMessage());
+                // Werfe den Fehler nur weiter, wenn es kein bekannter/ignorierbarer Fehler ist
+                if (!in_array($e->getCode(), ['42S21', '42S22', '42000', '1064'])) {
+                    throw $e;
                 }
-                throw $e;
+                debugLog("Ignoriere bekannten Fehler und fahre fort");
             }
         }
-
-        return $results;
+        
+        // Hole die aktuelle Tabellenstruktur zur Überprüfung
+        $columns = $pdo->query("SHOW COLUMNS FROM ziele")->fetchAll(PDO::FETCH_ASSOC);
+        debugLog("Aktuelle Spalten der Tabelle ziele:", $columns);
+        
     } catch (Exception $e) {
-        debugLog("Fehler beim Anwenden der Struktur-Updates: " . $e->getMessage());
-        $results['errors'][] = $e->getMessage();
-        return $results;
+        $results['errors'][] = "Allgemeiner Fehler: " . $e->getMessage();
+        debugLog("Fehler in applyStructureUpdates: " . $e->getMessage());
     }
+    
+    return $results;
 }
 
 // Funktion zum Aktualisieren der Dateien

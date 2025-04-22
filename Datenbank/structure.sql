@@ -51,7 +51,21 @@ CREATE TABLE IF NOT EXISTS zeitraum (
     ende DATETIME NOT NULL
 );
 
--- Benenne die Spalte 'name' in 'ziel' in der Tabelle 'ziele' um
+-- Lösche die Spalte 'ziel' falls sie existiert
+SET @columnExists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_NAME = 'ziele' 
+    AND COLUMN_NAME = 'ziel' 
+    AND TABLE_SCHEMA = DATABASE());
+
+SET @sql = IF(@columnExists > 0, 
+    'ALTER TABLE `ziele` DROP COLUMN `ziel`',
+    'SELECT 1');
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Benenne die Spalte 'name' in 'ziel' um
 SET @columnExists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
     WHERE TABLE_NAME = 'ziele' 
     AND COLUMN_NAME = 'name' 
@@ -65,10 +79,8 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
--- Warte kurz, um sicherzustellen, dass die Umbenennung abgeschlossen ist
-DO SLEEP(1);
-
 -- Anpassung der Spalten in der Tabelle 'ziele'
+ALTER TABLE `ziele` MODIFY COLUMN `ziel` VARCHAR(100) NOT NULL UNIQUE;
 ALTER TABLE `ziele` MODIFY COLUMN `gesamtbetrag` DECIMAL(10,2) NOT NULL DEFAULT 0.00;
 ALTER TABLE `ziele` MODIFY COLUMN `mindestbetrag` DECIMAL(10,2) DEFAULT NULL;
 ALTER TABLE `ziele` MODIFY COLUMN `abgeschlossen` TINYINT(1) NOT NULL DEFAULT 0;
