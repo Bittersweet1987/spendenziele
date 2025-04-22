@@ -115,4 +115,16 @@ DEALLOCATE PREPARE stmt;
 -- Stelle die Daten aus der spenden-Tabelle wieder her
 INSERT IGNORE INTO `ziele` (`ziel`)
 SELECT DISTINCT `ziel` FROM `spenden`
-WHERE `ziel` NOT IN (SELECT `ziel` FROM `ziele`); 
+WHERE `ziel` NOT IN (SELECT `ziel` FROM `ziele`);
+
+-- Aktualisiere die bestehenden Einträge in der Tabelle 'ziele'
+UPDATE `ziele` z
+JOIN (
+    SELECT `ziel`, SUM(`betrag`) as gesamtbetrag
+    FROM `spenden`
+    GROUP BY `ziel`
+) s ON z.`ziel` = s.`ziel`
+SET z.`gesamtbetrag` = s.`gesamtbetrag`;
+
+-- Lösche leere Einträge
+DELETE FROM `ziele` WHERE `ziel` = '' OR `ziel` IS NULL; 
