@@ -473,7 +473,9 @@ function applyStructureUpdates($db) {
                 $stmt->execute();
                 
                 // Hole das Ergebnis, um den Puffer zu leeren
-                $stmt->fetchAll(PDO::FETCH_ASSOC);
+                if ($stmt->columnCount() > 0) {
+                    $stmt->fetchAll(PDO::FETCH_ASSOC);
+                }
                 
                 // Logge erfolgreiche Ausführung
                 debugLog("SQL Statement erfolgreich ausgeführt: " . substr($statement, 0, 100) . "...");
