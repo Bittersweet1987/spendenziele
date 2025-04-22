@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS spenden (
 -- Tabelle für Spendenziele
 CREATE TABLE IF NOT EXISTS ziele (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL UNIQUE,
+    ziel VARCHAR(100) NOT NULL UNIQUE,
     gesamtbetrag DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     mindestbetrag DECIMAL(10,2) DEFAULT NULL,
     abgeschlossen TINYINT(1) NOT NULL DEFAULT 0,
@@ -110,4 +110,23 @@ ALTER TABLE `zeitzonen` MODIFY COLUMN `name` VARCHAR(255) NOT NULL UNIQUE;
 
 -- Anpassung der Spalten in der Tabelle 'zeitraum'
 ALTER TABLE `zeitraum` MODIFY COLUMN `start` DATETIME NOT NULL;
-ALTER TABLE `zeitraum` MODIFY COLUMN `ende` DATETIME NOT NULL; 
+ALTER TABLE `zeitraum` MODIFY COLUMN `ende` DATETIME NOT NULL;
+
+-- Füge die Spalte 'ziel' hinzu, falls sie nicht existiert
+SET @columnExists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_NAME = 'ziele' 
+    AND COLUMN_NAME = 'ziel' 
+    AND TABLE_SCHEMA = DATABASE());
+
+SET @sql = IF(@columnExists = 0, 
+    'ALTER TABLE `ziele` ADD COLUMN `ziel` VARCHAR(100) NOT NULL UNIQUE AFTER `id`',
+    'SELECT 1');
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Stelle die Daten aus der spenden-Tabelle wieder her
+INSERT IGNORE INTO `ziele` (`ziel`)
+SELECT DISTINCT `ziel` FROM `spenden`
+WHERE `ziel` NOT IN (SELECT `ziel` FROM `ziele`); 
