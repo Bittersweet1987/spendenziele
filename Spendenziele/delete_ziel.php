@@ -20,7 +20,7 @@ try {
     $pdo->beginTransaction();
 
     // Zuerst alle zugehörigen Spenden löschen
-    $stmt = $pdo->prepare("DELETE FROM spenden WHERE ziel = (SELECT name FROM ziele WHERE id = ?)");
+    $stmt = $pdo->prepare("DELETE FROM spenden WHERE ziel = (SELECT ziel FROM ziele WHERE id = ?)");
     $stmt->execute([$ziel_id]);
 
     // Dann das Ziel selbst löschen

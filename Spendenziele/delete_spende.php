@@ -40,7 +40,7 @@ try {
     $stmt->execute([$spende_id]);
 
     // Aktualisiere den Gesamtbetrag der Ziel
-    $stmt = $pdo->prepare("UPDATE ziele SET gesamtbetrag = gesamtbetrag - ? WHERE name = ?");
+    $stmt = $pdo->prepare("UPDATE ziele SET gesamtbetrag = gesamtbetrag - ? WHERE ziel = ?");
     $stmt->execute([$betrag, $ziel]);
 
     // Überprüfe, ob die Ziel noch Spenden hat
@@ -50,7 +50,7 @@ try {
 
     if ($row['gesamtbetrag'] === null || $row['gesamtbetrag'] <= 0) {
         // Falls keine Spenden mehr existieren, lösche die Ziel
-        $stmt = $pdo->prepare("DELETE FROM ziele WHERE name = ?");
+        $stmt = $pdo->prepare("DELETE FROM ziele WHERE ziel = ?");
         $stmt->execute([$ziel]);
     }
 
